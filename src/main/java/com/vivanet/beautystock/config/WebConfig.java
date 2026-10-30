@@ -10,6 +10,9 @@ public class WebConfig implements WebMvcConfigurer {
 
     @Override
     public void addViewControllers(ViewControllerRegistry registro) {
+        // /login solo recibe el formulario (POST). Si se abre o recarga en el navegador (GET),
+        // se envia a la pantalla de inicio de sesion en vez de mostrar un error 404.
+        registro.addRedirectViewController("/login", "/login.html");
         registro.addRedirectViewController("/admin", "/admin/");
         registro.addViewController("/admin/").setViewName("forward:/admin/index.html");
         registro.addRedirectViewController("/catalogo", "/catalogo/");
