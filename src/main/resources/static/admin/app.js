@@ -258,7 +258,8 @@ function dibujarProductos(lista, recargar) {
   $('#lista').innerHTML = `<div class="tabla-contenedor"><table>
     <thead><tr><th></th><th>Código</th><th>Producto</th><th>Categoría</th><th class="num">Costo</th><th class="num">Precio</th><th>Existencias</th><th></th></tr></thead>
     <tbody>${lista.map((p) => `<tr class="${p.activo ? '' : 'inactivo'}">
-      <td>${p.imagenes.length ? `<img class="miniatura" src="/api/public/imagenes/${p.imagenes[0]}" alt="">` : '<div class="miniatura"></div>'}</td>
+      <td><button type="button" class="foto-boton" data-imagenes="${p.id}" title="Ver o agregar fotos" aria-label="Fotos de ${esc(p.nombre)}">
+        ${p.imagenes.length ? `<img class="miniatura" src="/api/public/imagenes/${p.imagenes[0]}" alt="">` : '<span class="miniatura sin-foto">📷+</span>'}</button></td>
       <td>${esc(p.codigo)}</td>
       <td><strong>${esc(p.nombre)}</strong><br><span class="suave">${esc(p.marca)}</span></td>
       <td>${esc(p.categoriaNombre || '—')}</td>
@@ -267,7 +268,7 @@ function dibujarProductos(lista, recargar) {
       <td>${etiquetaStock(p)}${p.reservado ? ` <span class="etiqueta neutra" title="Reservado por pedidos">${p.reservado} res.</span>` : ''}</td>
       <td class="fila fin">
         <button class="pequeno" data-editar="${p.id}">Editar</button>
-        <button class="pequeno" data-imagenes="${p.id}">Fotos</button>
+        <button class="pequeno" data-imagenes="${p.id}">📷 Fotos</button>
         <button class="pequeno" data-historial="${p.id}">Precios</button>
         <button class="pequeno ${p.activo ? 'peligro' : ''}" data-activo="${p.id}" data-valor="${!p.activo}">${p.activo ? 'Desactivar' : 'Activar'}</button>
       </td></tr>`).join('')}</tbody></table></div>`;
@@ -294,6 +295,8 @@ function formularioProducto(p, recargar) {
       <div class="ancho fila"><span class="suave" id="sugerido"></span><button type="button" class="pequeno" id="usar-sugerido">Usar precio sugerido</button></div>
       <label>Stock mínimo <input name="stockMinimo" type="number" min="0" step="1" data-numero value="${p?.stockMinimo ?? 0}"></label>
       <label class="ancho">Descripción <textarea name="descripcion">${esc(p?.descripcion)}</textarea></label>
+      <label class="ancho">📷 Fotos ${p?.imagenes.length ? `(ya tiene ${p.imagenes.length}; las nuevas se agregan)` : '(desde el celular puedes tomarla con la cámara)'}
+        <input type="file" id="fotos-producto" accept="image/*" multiple></label>
       ${p ? '' : '<p class="ancho suave">Las existencias se cargan registrando una <strong>Compra</strong> (o un ajuste de inventario).</p>'}
     </form>
     <div class="modal-pie"><button data-cerrar>Cancelar</button><button class="primario" form="form-producto">Guardar</button></div>`);
@@ -313,9 +316,15 @@ function formularioProducto(p, recargar) {
       const datos = leerFormulario(form);
       datos.precioVenta = datos.precioVenta ?? 0;
       if (p && !datos.precioVenta) datos.precioVenta = sugerido;
-      await api(p ? '/api/productos/' + p.id : '/api/productos', { metodo: p ? 'PUT' : 'POST', datos });
+      const guardado = await api(p ? '/api/productos/' + p.id : '/api/productos', { metodo: p ? 'PUT' : 'POST', datos });
+      const fotos = $('#fotos-producto', m).files;
+      if (fotos.length) {
+        const envio = new FormData();
+        for (const foto of fotos) envio.append('archivos', foto);
+        await api(`/api/productos/${guardado.id}/imagenes`, { metodo: 'POST', formulario: envio });
+      }
       cerrarModal();
-      avisar('Producto guardado');
+      avisar(fotos.length ? `Producto guardado con ${fotos.length} foto(s)` : 'Producto guardado');
       recargar();
     });
   });

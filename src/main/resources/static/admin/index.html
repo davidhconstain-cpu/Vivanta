@@ -60,6 +60,9 @@
     .pestanas { display: flex; gap: .3em; margin-bottom: 1em; border-bottom: 1px solid var(--borde); }
     .pestanas button { border: 0; border-bottom: 3px solid transparent; border-radius: 0; background: transparent; font-weight: 700; color: var(--texto-suave); }
     .pestanas button.activo { border-bottom-color: var(--principal); color: var(--texto); }
+    .foto-boton { padding: 0; border: 0; background: none; border-radius: 8px; }
+    .foto-boton:hover .miniatura { outline: 2px solid var(--principal); }
+    .miniatura.sin-foto { display: grid; place-items: center; font-size: .8rem; color: var(--principal); border: 1px dashed var(--principal); }
     .menu-movil { display: none; }
     #qr img { width: 180px; height: 180px; background: #fff; padding: 8px; border-radius: 10px; }
 
