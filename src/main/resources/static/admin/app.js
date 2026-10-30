@@ -483,10 +483,10 @@ async function compras() {
     const lista = await api('/api/compras?pendientes=' + $('#solo-pendientes').checked);
     $('#lista').innerHTML = lista.length ? `<div class="tabla-contenedor"><table>
       <thead><tr><th>Número</th><th>Fecha</th><th>Proveedor</th><th class="num">Total</th><th class="num">Pagado</th><th class="num">Saldo</th><th>Vence</th><th></th></tr></thead>
-      <tbody>${lista.map((c) => `<tr>
+      <tbody>${lista.map((c) => `<tr class="${c.anulada ? 'inactivo' : ''}">
         <td><strong>${c.numero}</strong></td><td>${fecha(c.fecha + 'T00:00')}</td><td>${esc(c.proveedor || '—')}</td>
         <td class="num">${cop(c.total)}</td><td class="num">${cop(c.pagado)}</td>
-        <td class="num">${c.saldo ? `<span class="etiqueta aviso">${cop(c.saldo)}</span>` : '<span class="etiqueta ok">Pagada</span>'}</td>
+        <td class="num">${c.anulada ? '<span class="etiqueta peligro">Anulada</span>' : c.saldo ? `<span class="etiqueta aviso">${cop(c.saldo)}</span>` : '<span class="etiqueta ok">Pagada</span>'}</td>
         <td>${c.fechaVencimiento ? etiquetaVencimiento(c.fechaVencimiento, c.saldo) : '—'}</td>
         <td class="num"><button class="pequeno" data-ver="${c.id}">Ver</button></td></tr>`).join('')}</tbody></table></div>`
       : '<div class="tarjeta vacio">No hay compras registradas.</div>';
@@ -508,18 +508,24 @@ function etiquetaVencimiento(fechaIso, saldo) {
   return texto;
 }
 
-async function nuevaCompra(recargar) {
+/**
+ * Formulario de compra. Si se pasa "base" (una compra anulada), el formulario
+ * aparece lleno con sus datos para corregir solo lo que estaba mal.
+ */
+async function nuevaCompra(recargar, base = null) {
   const lista = (await api('/api/productos?soloActivos=true'));
   if (!lista.length) {
     avisar('Primero crea productos en la sección Productos.', 'error');
     return;
   }
   const opciones = lista.map((p) => `<option value="${p.id}" data-costo="${p.costo}">${esc(p.codigo)} · ${esc(p.nombre)} (${esc(p.marca)})</option>`).join('');
-  const m = abrirModal('Registrar compra', `
+  const m = abrirModal(base ? 'Corregir compra ' + base.numero : 'Registrar compra', `
     <form id="form-compra">
+      ${base ? `<p class="tarjeta" style="background:var(--aviso-fondo)">La compra ${base.numero} quedó anulada. Corrige lo que estaba mal y guarda: se registrará como una compra nueva.
+        ${base.pagado ? `Ya le habías pagado ${cop(base.pagado)} al proveedor; ese valor aparece abajo como pagado.` : ''}</p>` : ''}
       <div class="campos">
-        <label>Fecha <input type="date" name="fecha" value="${hoyISO()}"></label>
-        <label>Proveedor (opcional) <input name="proveedor" placeholder="Texto libre"></label>
+        <label>Fecha <input type="date" name="fecha" value="${base ? base.fecha : hoyISO()}"></label>
+        <label>Proveedor (opcional) <input name="proveedor" placeholder="Texto libre" value="${esc(base?.proveedor)}"></label>
       </div>
       <h3 style="margin-top:1.2em">Productos</h3>
       <div id="lineas"></div>
@@ -544,12 +550,12 @@ async function nuevaCompra(recargar) {
   const lineas = $('#lineas', m);
   const total = () => $$('.linea', lineas).reduce((s, l) => s + Number(l.querySelector('[name=cantidad]').value || 0) * Number(l.querySelector('[name=costo]').value || 0), 0);
   const refrescar = () => { $('#total-compra', m).textContent = cop(total()); };
-  const agregar = () => {
+  const agregar = (previo = null) => {
     const linea = document.createElement('div');
     linea.className = 'linea campos';
     linea.style.cssText = 'grid-template-columns: 2fr 90px 140px auto; align-items:end; margin-bottom:.5em';
     linea.innerHTML = `<label>Producto <select name="producto">${opciones}</select></label>
-      <label>Cantidad <input type="number" name="cantidad" min="1" value="1"></label>
+      <label>Cantidad <input type="number" name="cantidad" min="1" value="${previo?.cantidad ?? 1}"></label>
       <label>Costo unitario <input type="number" name="costo" min="0"></label>
       <button type="button" class="icono peligro" aria-label="Quitar">✕</button>`;
     const sel = linea.querySelector('select');
@@ -559,11 +565,26 @@ async function nuevaCompra(recargar) {
     linea.querySelector('button').addEventListener('click', () => { linea.remove(); refrescar(); });
     linea.addEventListener('input', refrescar);
     lineas.append(linea);
-    ponerCosto();
+    if (previo) {
+      sel.value = previo.productoId;
+      costo.value = previo.costoUnitario;
+      refrescar();
+    } else {
+      ponerCosto();
+    }
   };
-  $('#agregar-linea', m).addEventListener('click', agregar);
+  $('#agregar-linea', m).addEventListener('click', () => agregar());
   $('#pago-total', m).addEventListener('click', () => { $('[name=montoPagado]', m).value = total(); });
-  agregar();
+  if (base) {
+    const f = $('#form-compra', m);
+    base.items.filter((i) => lista.some((p) => p.id === i.productoId)).forEach((i) => agregar(i));
+    f.costosAdicionales.value = base.costosAdicionales;
+    f.notaCostosAdicionales.value = base.notaCostosAdicionales || '';
+    f.montoPagado.value = base.pagado;
+    f.fechaVencimiento.value = base.fechaVencimiento || '';
+    if (base.pagos.length) f.metodoPago.value = base.pagos[0].metodo;
+  }
+  if (!$$('.linea', lineas).length) agregar();
 
   $('#form-compra', m).addEventListener('submit', (e) => {
     e.preventDefault();
@@ -582,7 +603,8 @@ async function nuevaCompra(recargar) {
         fechaVencimiento: f.fechaVencimiento.value || null, actualizarPrecios: f.actualizarPrecios.checked,
       } });
       cerrarModal();
-      avisar(`Compra ${c.numero} registrada. Inventario actualizado.`);
+      avisar(base ? `Compra corregida: ahora es la ${c.numero} (la ${base.numero} quedó anulada).`
+        : `Compra ${c.numero} registrada. Inventario actualizado.`);
       recargar();
     });
   });
@@ -591,7 +613,9 @@ async function nuevaCompra(recargar) {
 async function verCompra(id, recargar) {
   const c = await api('/api/compras/' + id);
   const m = abrirModal('Compra ' + c.numero, `
-    <p>${fecha(c.fecha + 'T00:00')} · ${esc(c.proveedor || 'Sin proveedor')}</p>
+    <p>${fecha(c.fecha + 'T00:00')} · ${esc(c.proveedor || 'Sin proveedor')} ${c.anulada ? '<span class="etiqueta peligro">Anulada</span>' : ''}</p>
+    ${c.anulada ? `<p class="tarjeta" style="background:var(--peligro-fondo)">Anulada el ${fechaHora(c.fechaAnulacion)}. Motivo: ${esc(c.motivoAnulacion)}.
+      Sus unidades salieron del inventario y ya no cuenta como deuda.${c.pagado ? ` Habías pagado ${cop(c.pagado)}: si corresponde, pide la devolución al proveedor o usa ese valor en la compra corregida.` : ''}</p>` : ''}
     <div class="tabla-contenedor"><table><thead><tr><th>Producto</th><th class="num">Cant.</th><th class="num">Costo</th><th class="num">Subtotal</th></tr></thead><tbody>
       ${c.items.map((i) => `<tr><td>${esc(i.productoNombre)}</td><td class="num">${i.cantidad}</td><td class="num">${cop(i.costoUnitario)}</td><td class="num">${cop(i.subtotal)}</td></tr>`).join('')}
     </tbody></table></div>
@@ -603,7 +627,10 @@ async function verCompra(id, recargar) {
     <h3>Pagos (comprobantes PP)</h3>
     ${tablaPagos(c.pagos)}
     ${c.saldo ? formularioAbono() : ''}
-    <div class="modal-pie"><button data-cerrar>Cerrar</button></div>`);
+    <div class="modal-pie">
+      ${c.anulada ? '' : `<button class="peligro" id="anular-compra">Anular compra</button>
+        <button id="corregir-compra" title="Anula esta compra y abre el formulario lleno para corregirla">Corregir (anular y registrar de nuevo)</button>`}
+      <button class="primario" data-cerrar>Cerrar</button></div>`);
   $('#form-abono', m)?.addEventListener('submit', (e) => {
     e.preventDefault();
     intentar(async () => {
@@ -611,6 +638,33 @@ async function verCompra(id, recargar) {
       avisar('Pago registrado');
       recargar();
       verCompra(id, recargar);
+    });
+  });
+  $('#anular-compra', m)?.addEventListener('click', () => anularCompra(c, recargar, false));
+  $('#corregir-compra', m)?.addEventListener('click', () => anularCompra(c, recargar, true));
+}
+
+/** Pide el motivo, anula la compra y, si se pidio corregir, abre el formulario lleno. */
+function anularCompra(c, recargar, corregir) {
+  const m = abrirModal((corregir ? 'Corregir compra ' : 'Anular compra ') + c.numero, `
+    <form id="form-anular-compra">
+      <p>Las <strong>${c.items.reduce((s, i) => s + i.cantidad, 0)} unidades</strong> de esta compra saldrán del inventario y dejará de contar como deuda con el proveedor.
+        Solo se puede si ninguna de esas unidades se ha vendido.</p>
+      ${corregir ? '<p>Después se abrirá el formulario con los mismos datos para que corrijas lo que estaba mal.</p>' : ''}
+      <label>Motivo (obligatorio) <input name="motivo" required placeholder="${corregir ? 'Ej.: cantidad mal digitada' : 'Ej.: compra duplicada'}"></label>
+    </form>
+    <div class="modal-pie"><button data-cerrar>Volver</button><button class="primario" form="form-anular-compra">${corregir ? 'Anular y corregir' : 'Anular compra'}</button></div>`);
+  $('#form-anular-compra', m).addEventListener('submit', (e) => {
+    e.preventDefault();
+    intentar(async () => {
+      const anulada = await api(`/api/compras/${c.id}/anular`, { metodo: 'POST', datos: { motivo: e.target.motivo.value } });
+      recargar();
+      if (corregir) {
+        nuevaCompra(recargar, anulada);
+      } else {
+        avisar(`Compra ${c.numero} anulada`);
+        verCompra(c.id, recargar);
+      }
     });
   });
 }
@@ -698,7 +752,7 @@ function ajustarInventario(p) {
   });
 }
 
-const TIPOS_MOV = { COMPRA: 'Compra', VENTA: 'Venta', AJUSTE_ENTRADA: 'Ajuste +', AJUSTE_SALIDA: 'Ajuste −', ANULACION_VENTA: 'Anulación' };
+const TIPOS_MOV = { COMPRA: 'Compra', VENTA: 'Venta', AJUSTE_ENTRADA: 'Ajuste +', AJUSTE_SALIDA: 'Ajuste −', ANULACION_VENTA: 'Anulación venta', ANULACION_COMPRA: 'Anulación compra' };
 
 async function movimientos() {
   const lista = await api('/api/inventario/movimientos');

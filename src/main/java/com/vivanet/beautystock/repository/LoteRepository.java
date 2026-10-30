@@ -19,6 +19,11 @@ public interface LoteRepository extends JpaRepository<Lote, Long> {
 
     List<Lote> findByProductoIdOrderByFechaDescIdDesc(Long productoId);
 
+    /** Lotes creados por un documento, por ejemplo una compra "C-0001". */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select l from Lote l where l.origen = :origen order by l.id")
+    List<Lote> deOrigen(String origen);
+
     @Query("select coalesce(sum(l.cantidadDisponible), 0) from Lote l where l.producto.id = :productoId")
     long existencias(Long productoId);
 

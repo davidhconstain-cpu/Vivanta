@@ -11,6 +11,6 @@ public interface CompraRepository extends JpaRepository<Compra, Long> {
 
     List<Compra> findAllByOrderByIdDesc();
 
-    @Query("select c from Compra c where c.total > c.pagado order by c.fechaVencimiento nulls last, c.id")
+    @Query("select c from Compra c where c.anulada = false and c.total > c.pagado order by c.fechaVencimiento nulls last, c.id")
     List<Compra> pendientesDePago();
 }

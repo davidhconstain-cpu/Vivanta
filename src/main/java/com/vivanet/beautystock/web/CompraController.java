@@ -10,6 +10,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.vivanet.beautystock.dto.Dtos.AnularRequest;
 import com.vivanet.beautystock.dto.Dtos.CompraDto;
 import com.vivanet.beautystock.dto.Dtos.CompraRequest;
 import com.vivanet.beautystock.dto.Dtos.PagoRequest;
@@ -40,6 +41,11 @@ public class CompraController {
     @PostMapping
     public CompraDto registrar(@Valid @RequestBody CompraRequest datos) {
         return servicio.registrar(datos);
+    }
+
+    @PostMapping("/{id}/anular")
+    public CompraDto anular(@PathVariable Long id, @Valid @RequestBody AnularRequest datos) {
+        return servicio.anular(id, datos.motivo());
     }
 
     @PostMapping("/{id}/pagos")

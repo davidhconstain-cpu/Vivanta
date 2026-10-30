@@ -54,7 +54,20 @@ public class Compra {
     @OrderBy("fecha")
     private List<PagoCompra> pagos = new ArrayList<>();
 
-    public long getSaldo() { return total - pagado; }
+    /** Una compra anulada ya no se debe; sus unidades salieron del inventario. */
+    @Column(nullable = false, columnDefinition = "boolean default false")
+    private boolean anulada;
+    private String motivoAnulacion;
+    private LocalDateTime fechaAnulacion;
+
+    public long getSaldo() { return anulada ? 0 : total - pagado; }
+
+    public boolean isAnulada() { return anulada; }
+    public void setAnulada(boolean anulada) { this.anulada = anulada; }
+    public String getMotivoAnulacion() { return motivoAnulacion; }
+    public void setMotivoAnulacion(String motivoAnulacion) { this.motivoAnulacion = motivoAnulacion; }
+    public LocalDateTime getFechaAnulacion() { return fechaAnulacion; }
+    public void setFechaAnulacion(LocalDateTime fechaAnulacion) { this.fechaAnulacion = fechaAnulacion; }
 
     public Long getId() { return id; }
     public String getNumero() { return numero; }

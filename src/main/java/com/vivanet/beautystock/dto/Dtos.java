@@ -91,7 +91,8 @@ public final class Dtos {
 
     public record CompraDto(Long id, String numero, LocalDate fecha, String proveedor, long total,
             long costosAdicionales, String notaCostosAdicionales, long pagado, long saldo,
-            LocalDate fechaVencimiento, List<CompraItemDto> items, List<PagoDto> pagos) {
+            LocalDate fechaVencimiento, List<CompraItemDto> items, List<PagoDto> pagos,
+            boolean anulada, String motivoAnulacion, LocalDateTime fechaAnulacion) {
     }
 
     public record PagoRequest(@Min(1) long valor, @NotNull MetodoPago metodo) {

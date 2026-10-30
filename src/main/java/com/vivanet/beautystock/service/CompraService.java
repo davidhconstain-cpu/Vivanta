@@ -1,6 +1,7 @@
 package com.vivanet.beautystock.service;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.List;
 
 import org.springframework.stereotype.Service;
@@ -14,24 +15,28 @@ import com.vivanet.beautystock.dto.Dtos.PagoDto;
 import com.vivanet.beautystock.dto.Dtos.PagoRequest;
 import com.vivanet.beautystock.entity.Compra;
 import com.vivanet.beautystock.entity.CompraItem;
+import com.vivanet.beautystock.entity.Lote;
 import com.vivanet.beautystock.entity.MetodoPago;
 import com.vivanet.beautystock.entity.PagoCompra;
 import com.vivanet.beautystock.entity.Producto;
 import com.vivanet.beautystock.entity.TipoMovimiento;
 import com.vivanet.beautystock.repository.CompraRepository;
+import com.vivanet.beautystock.repository.LoteRepository;
 
 /** Entrada de mercancia: crea la compra, sus lotes y los pagos al proveedor. */
 @Service
 public class CompraService {
 
     private final CompraRepository compras;
+    private final LoteRepository lotes;
     private final ProductoService productos;
     private final InventarioService inventario;
     private final ConsecutivoService consecutivos;
 
-    public CompraService(CompraRepository compras, ProductoService productos, InventarioService inventario,
-            ConsecutivoService consecutivos) {
+    public CompraService(CompraRepository compras, LoteRepository lotes, ProductoService productos,
+            InventarioService inventario, ConsecutivoService consecutivos) {
         this.compras = compras;
+        this.lotes = lotes;
         this.productos = productos;
         this.inventario = inventario;
         this.consecutivos = consecutivos;
@@ -76,9 +81,50 @@ public class CompraService {
         return aDto(compra);
     }
 
+    /**
+     * Anula una compra mal registrada: retira del inventario las unidades que entraron con ella
+     * y deja de contarla como deuda con el proveedor. Solo se permite si ninguna de esas
+     * unidades se ha vendido o ajustado; si no, el inventario y la utilidad quedarian mal.
+     */
+    @Transactional
+    public CompraDto anular(Long compraId, String motivo) {
+        Compra compra = buscar(compraId);
+        if (compra.isAnulada()) {
+            throw new NegocioException("La compra " + compra.getNumero() + " ya está anulada.");
+        }
+        List<Lote> lotesCompra = lotes.deOrigen(compra.getNumero());
+        for (Lote lote : lotesCompra) {
+            int usadas = lote.getCantidadInicial() - lote.getCantidadDisponible();
+            if (usadas > 0) {
+                throw new NegocioException("No se puede anular: ya salieron " + usadas + " unidad(es) de "
+                        + lote.getProducto().getNombre() + " de esta compra (por ventas o ajustes). "
+                        + "Anula primero esas ventas, o corrige con un ajuste de inventario.");
+            }
+        }
+
+        for (Lote lote : lotesCompra) {
+            Producto producto = lote.getProducto();
+            inventario.registrarMovimiento(producto, TipoMovimiento.ANULACION_COMPRA, -lote.getCantidadDisponible(),
+                    compra.getNumero(), motivo.trim());
+            lote.setCantidadDisponible(0);
+            // El costo vigente vuelve a ser el del lote mas reciente que no sea de esta compra.
+            lotes.findByProductoIdOrderByFechaDescIdDesc(producto.getId()).stream()
+                    .filter(l -> !compra.getNumero().equals(l.getOrigen()))
+                    .findFirst()
+                    .ifPresent(anterior -> producto.setCosto(anterior.getCostoUnitario()));
+        }
+        compra.setAnulada(true);
+        compra.setMotivoAnulacion(motivo.trim());
+        compra.setFechaAnulacion(LocalDateTime.now());
+        return aDto(compra);
+    }
+
     @Transactional
     public CompraDto abonar(Long compraId, PagoRequest pago) {
         Compra compra = buscar(compraId);
+        if (compra.isAnulada()) {
+            throw new NegocioException("No se pueden registrar pagos en una compra anulada.");
+        }
         if (pago.valor() > compra.getSaldo()) {
             throw new NegocioException("El abono supera el saldo pendiente de la compra.");
         }
@@ -118,7 +164,7 @@ public class CompraService {
                 .toList();
         return new CompraDto(c.getId(), c.getNumero(), c.getFecha(), c.getProveedor(), c.getTotal(),
                 c.getCostosAdicionales(), c.getNotaCostosAdicionales(), c.getPagado(), c.getSaldo(),
-                c.getFechaVencimiento(), items, pagos);
+                c.getFechaVencimiento(), items, pagos, c.isAnulada(), c.getMotivoAnulacion(), c.getFechaAnulacion());
     }
 
     static String textoOpcional(String texto) {
