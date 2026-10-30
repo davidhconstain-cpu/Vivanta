@@ -8,6 +8,7 @@ import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
 
 import com.vivanet.beautystock.service.AdvertenciaException;
 import com.vivanet.beautystock.service.NegocioException;
@@ -26,6 +27,12 @@ public class ApiExceptionHandler {
     public ResponseEntity<Map<String, Object>> advertencia(AdvertenciaException e) {
         return ResponseEntity.status(HttpStatus.CONFLICT)
                 .body(Map.of("mensaje", e.getMessage(), "advertencias", e.getAdvertencias()));
+    }
+
+    @ExceptionHandler(MaxUploadSizeExceededException.class)
+    public ResponseEntity<Map<String, Object>> archivoGrande(MaxUploadSizeExceededException e) {
+        return ResponseEntity.badRequest().body(Map.of("mensaje",
+                "El archivo es demasiado grande (máximo 5 MB por imagen). Usa una imagen más liviana."));
     }
 
     @ExceptionHandler(HttpMessageNotReadableException.class)

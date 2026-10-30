@@ -61,6 +61,9 @@ public class PedidoService {
         if (!config.isCatalogoHabilitado()) {
             throw new NegocioException("El catalogo esta en mantenimiento.");
         }
+        if (config.getWhatsapp() == null || config.getWhatsapp().isBlank()) {
+            throw new NegocioException("Por ahora no podemos recibir pedidos en línea. Intenta más tarde.");
+        }
         if (datos.tipoEntrega() == TipoEntrega.DOMICILIO
                 && (datos.direccion() == null || datos.direccion().isBlank())) {
             throw new NegocioException("La direccion es obligatoria para entrega a domicilio.");

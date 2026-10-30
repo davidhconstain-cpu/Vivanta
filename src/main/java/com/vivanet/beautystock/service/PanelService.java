@@ -62,7 +62,8 @@ public class PanelService {
         }
 
         List<AlertaDto> alertas = new ArrayList<>();
-        for (ProductoDto p : productos.listar(null, null, true)) {
+        List<ProductoDto> activos = productos.listar(null, null, true);
+        for (ProductoDto p : activos) {
             if (p.existencias() == 0) {
                 alertas.add(new AlertaDto("agotado", p.nombre() + " está agotado.", "inventario"));
             } else if (p.stockBajo()) {
@@ -84,6 +85,13 @@ public class PanelService {
         if (pendientes > 0) {
             alertas.add(0, new AlertaDto("pedido", pendientes + " pedido(s) del catálogo por confirmar.", "pedidos"));
         }
+        String whatsapp = configuracion.obtener().getWhatsapp();
+        boolean whatsappConfigurado = whatsapp != null && !whatsapp.isBlank();
+        if (!whatsappConfigurado) {
+            alertas.add(0, new AlertaDto("vencido",
+                    "Falta el número de WhatsApp: el catálogo no puede recibir pedidos. Configúralo aquí.",
+                    "configuracion"));
+        }
 
         return new PanelDto(
                 deHoy.stream().mapToLong(Venta::getTotal).sum(),
@@ -93,7 +101,7 @@ public class PanelService {
                 delMes.stream().mapToLong(Venta::getUtilidad).sum(),
                 porCobrar.stream().mapToLong(Venta::getSaldo).sum(),
                 porPagar.stream().mapToLong(Compra::getSaldo).sum(),
-                unidades, valor, pendientes, alertas);
+                unidades, valor, pendientes, alertas, whatsappConfigurado, activos.size());
     }
 
     /** Productos para el catalogo publico (solo activos; agotados segun la configuracion). */

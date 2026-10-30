@@ -98,9 +98,63 @@ function leerFormulario(form) {
 
 const vista = () => $('#vista');
 
+/**
+ * Reduce una foto antes de subirla (las del celular pesan varios MB): maximo 1600 px
+ * de lado, en JPEG. Si algo falla, se sube la original.
+ */
+async function reducirFoto(archivo, maximo = 1600) {
+  if (!archivo.type.startsWith('image/') || archivo.type === 'image/gif') return archivo;
+  try {
+    const imagen = await createImageBitmap(archivo);
+    const escala = Math.min(1, maximo / Math.max(imagen.width, imagen.height));
+    if (escala === 1 && archivo.size < 500 * 1024) return archivo;
+    const lienzo = document.createElement('canvas');
+    lienzo.width = Math.round(imagen.width * escala);
+    lienzo.height = Math.round(imagen.height * escala);
+    const g = lienzo.getContext('2d');
+    g.fillStyle = '#ffffff'; // fondo blanco para imagenes PNG con transparencia
+    g.fillRect(0, 0, lienzo.width, lienzo.height);
+    g.drawImage(imagen, 0, 0, lienzo.width, lienzo.height);
+    const blob = await new Promise((listo) => lienzo.toBlob(listo, 'image/jpeg', 0.85));
+    return blob ? new File([blob], archivo.name.replace(/\.\w+$/, '') + '.jpg', { type: 'image/jpeg' }) : archivo;
+  } catch {
+    return archivo;
+  }
+}
+
+/** Arma el formulario de envio con las fotos ya reducidas. */
+async function formularioFotos(archivos, campo = 'archivos') {
+  const envio = new FormData();
+  for (const archivo of archivos) envio.append(campo, await reducirFoto(archivo));
+  return envio;
+}
+
+/**
+ * En el celular las tablas se muestran como tarjetas (ver index.html). Para que cada dato
+ * diga que es, se copia el encabezado de su columna en data-label. Se hace solo cada vez
+ * que cambia la pagina, asi ninguna vista tiene que acordarse de hacerlo.
+ */
+function etiquetarTablas() {
+  $$('.tabla-contenedor table').forEach((tabla) => {
+    const titulos = $$('thead th', tabla).map((th) => th.textContent.trim());
+    $$('tbody tr', tabla).forEach((fila) => [...fila.children].forEach((celda, i) => {
+      if (titulos[i] && !celda.hasAttribute('colspan')) celda.dataset.label = titulos[i];
+    }));
+  });
+}
+new MutationObserver(etiquetarTablas).observe(document.body, { childList: true, subtree: true });
+
 // ---------- Navegacion ----------
 
 const vistas = { panel, ventas, pedidos, productos, compras, inventario, clientes, configuracion };
+
+/** Accion pedida desde el panel ("+ Nueva venta", "+ Compra") para abrirla al llegar a la vista. */
+let accionPendiente = null;
+function tomarAccion(nombre) {
+  const coincide = accionPendiente === nombre;
+  if (coincide) accionPendiente = null;
+  return coincide;
+}
 
 async function navegar() {
   const nombre = location.hash.slice(1) || 'panel';
@@ -114,6 +168,7 @@ async function navegar() {
 }
 window.addEventListener('hashchange', navegar);
 $('#abrir-menu').addEventListener('click', () => $('#app').classList.toggle('menu-abierto'));
+$('#fondo-menu').addEventListener('click', () => $('#app').classList.remove('menu-abierto'));
 
 async function actualizarContadorPedidos() {
   const lista = await api('/api/pedidos').catch(() => []);
@@ -145,6 +200,7 @@ async function latido() {
   if (ultimaActividad > ultimoLatido) {
     ultimoLatido = Date.now();
     await api('/api/sesion').catch(() => { /* api() ya envia al login si la sesion expiro */ });
+    actualizarContadorPedidos(); // asi ves los pedidos nuevos del catalogo sin recargar
   }
 }
 setInterval(latido, 4 * MINUTO);
@@ -180,8 +236,24 @@ $('#tema').addEventListener('click', () => {
 
 async function panel() {
   const d = await api('/api/panel');
+  const pasos = [
+    [d.whatsappConfigurado, 'Configura el WhatsApp y los datos del negocio', 'configuracion'],
+    [d.productosActivos > 0, 'Crea tus productos (con foto)', 'productos'],
+    [d.unidadesInventario > 0, 'Registra una compra para cargar existencias', 'compras'],
+  ];
+  const guia = pasos.every(([listo]) => listo) ? '' : `
+    <section class="tarjeta" style="margin-bottom:1.4em;border-left:4px solid var(--principal)">
+      <h2>Primeros pasos</h2>
+      <ol style="margin:0;padding-left:1.3em;display:flex;flex-direction:column;gap:.4em">
+        ${pasos.map(([listo, texto, destino]) => `<li>${listo ? `✅ <s class="suave">${texto}</s>` : `<a href="#${destino}">${texto}</a>`}</li>`).join('')}
+        <li>Comparte tu catálogo desde <a href="#configuracion">Configuración</a> (enlace, QR o WhatsApp).</li>
+      </ol>
+    </section>`;
   vista().innerHTML = `
-    <div class="cabecera"><h1>Panel</h1><a class="boton primario" href="#ventas" data-nueva-venta>+ Nueva venta</a></div>
+    <div class="cabecera"><h1>Panel</h1>
+      <a class="boton" href="#compras" data-accion="nueva-compra">+ Compra</a>
+      <a class="boton primario" href="#ventas" data-accion="nueva-venta">+ Nueva venta</a></div>
+    ${guia}
     <div class="indicadores">
       <div class="tarjeta indicador destacado"><div class="titulo">Ventas de hoy</div><div class="valor">${cop(d.ventasHoy)}</div><div class="detalle">${d.numeroVentasHoy} venta(s)</div></div>
       <div class="tarjeta indicador"><div class="titulo">Utilidad estimada hoy</div><div class="valor">${cop(d.utilidadHoy)}</div><div class="detalle">Según costo real (PEPS)</div></div>
@@ -199,7 +271,7 @@ async function panel() {
         ${d.alertas.length ? d.alertas.map((a) => `<a class="alerta ${a.tipo}" href="#${a.vista}">${esc(a.mensaje)}</a>`).join('') : '<p class="suave">Todo en orden. No hay alertas.</p>'}
       </div>
     </section>`;
-  $('[data-nueva-venta]').addEventListener('click', () => { sessionStorage.setItem('abrirVenta', '1'); });
+  $$('[data-accion]').forEach((a) => a.addEventListener('click', () => { accionPendiente = a.dataset.accion; }));
 }
 
 // =====================================================================
@@ -269,7 +341,7 @@ function dibujarProductos(lista, recargar) {
       <td class="fila fin">
         <button class="pequeno" data-editar="${p.id}">Editar</button>
         <button class="pequeno" data-imagenes="${p.id}">📷 Fotos</button>
-        <button class="pequeno" data-historial="${p.id}">Precios</button>
+        <button class="pequeno" data-historial="${p.id}">Historial de precios</button>
         <button class="pequeno ${p.activo ? 'peligro' : ''}" data-activo="${p.id}" data-valor="${!p.activo}">${p.activo ? 'Desactivar' : 'Activar'}</button>
       </td></tr>`).join('')}</tbody></table></div>`;
   const porId = (id) => lista.find((p) => p.id === Number(id));
@@ -319,9 +391,7 @@ function formularioProducto(p, recargar) {
       const guardado = await api(p ? '/api/productos/' + p.id : '/api/productos', { metodo: p ? 'PUT' : 'POST', datos });
       const fotos = $('#fotos-producto', m).files;
       if (fotos.length) {
-        const envio = new FormData();
-        for (const foto of fotos) envio.append('archivos', foto);
-        await api(`/api/productos/${guardado.id}/imagenes`, { metodo: 'POST', formulario: envio });
+        await api(`/api/productos/${guardado.id}/imagenes`, { metodo: 'POST', formulario: await formularioFotos(fotos) });
       }
       cerrarModal();
       avisar(fotos.length ? `Producto guardado con ${fotos.length} foto(s)` : 'Producto guardado');
@@ -374,7 +444,7 @@ async function gestionarImagenes(id, recargar) {
   $('#form-img', m).addEventListener('submit', (e) => {
     e.preventDefault();
     intentar(async () => {
-      await api(`/api/productos/${id}/imagenes`, { metodo: 'POST', formulario: new FormData(e.target) });
+      await api(`/api/productos/${id}/imagenes`, { metodo: 'POST', formulario: await formularioFotos(e.target.archivos.files) });
       avisar('Fotos agregadas');
       gestionarImagenes(id, recargar);
     });
@@ -425,6 +495,7 @@ async function compras() {
   $('#solo-pendientes').addEventListener('change', cargar);
   $('#btn-compra').addEventListener('click', () => nuevaCompra(cargar));
   await cargar();
+  if (tomarAccion('nueva-compra')) nuevaCompra(cargar);
 }
 
 function etiquetaVencimiento(fechaIso, saldo) {
@@ -649,13 +720,16 @@ async function ventas() {
       <label>Desde <input type="date" id="desde"></label>
       <label>Hasta <input type="date" id="hasta"></label>
       <label class="check" style="align-self:end"><input type="checkbox" id="pendientes"> Solo con saldo (cuentas por cobrar)</label>
+      <input type="search" id="buscar-venta" placeholder="Buscar por número o cliente" style="align-self:end">
     </div>
     <div id="lista"></div>`;
   const cargar = () => intentar(async () => {
     const params = new URLSearchParams({ pendientes: $('#pendientes').checked });
     if ($('#desde').value) params.set('desde', $('#desde').value);
     if ($('#hasta').value) params.set('hasta', $('#hasta').value);
-    const lista = await api('/api/ventas?' + params);
+    const texto = $('#buscar-venta').value.trim().toLowerCase();
+    const lista = (await api('/api/ventas?' + params)).filter((v) => !texto
+      || (v.numero + ' ' + (v.pedidoNumero || '') + ' ' + (v.clienteNombre || 'cliente general')).toLowerCase().includes(texto));
     const activas = lista.filter((v) => v.estado === 'ACTIVA');
     $('#lista').innerHTML = lista.length ? `
       <p class="suave">${activas.length} venta(s) · Total ${cop(activas.reduce((s, v) => s + v.total, 0))} · Utilidad ${cop(activas.reduce((s, v) => s + v.utilidad, 0))} · Por cobrar ${cop(activas.reduce((s, v) => s + v.saldo, 0))}</p>
@@ -672,12 +746,11 @@ async function ventas() {
     $$('[data-ver]').forEach((b) => b.addEventListener('click', () => verVenta(b.dataset.ver, cargar)));
   });
   ['desde', 'hasta', 'pendientes'].forEach((id) => $('#' + id).addEventListener('change', cargar));
+  let espera;
+  $('#buscar-venta').addEventListener('input', () => { clearTimeout(espera); espera = setTimeout(cargar, 250); });
   $('#btn-venta').addEventListener('click', () => nuevaVenta(cargar));
   await cargar();
-  if (sessionStorage.getItem('abrirVenta')) {
-    sessionStorage.removeItem('abrirVenta');
-    nuevaVenta(cargar);
-  }
+  if (tomarAccion('nueva-venta')) nuevaVenta(cargar);
 }
 
 async function nuevaVenta(recargar) {
@@ -736,17 +809,19 @@ async function nuevaVenta(recargar) {
   };
 
   const dibujarCarrito = () => {
-    $('#carrito', m).innerHTML = carrito.length ? carrito.map((l, i) => `
+    calcular(); // primero se calculan los totales de cada linea, luego se dibujan
+    $('#carrito', m).innerHTML = carrito.length ? `
+      <div class="carrito-titulos"><span>Producto</span><span>Cantidad</span><span>Precio c/u</span><span>Descuento</span><span>Total</span><span></span></div>
+      ${carrito.map((l, i) => `
       <div class="carrito-linea" data-i="${i}">
         <div class="nombre"><strong>${esc(l.nombre)}</strong><br><span class="suave">Disp. ${l.disponible} · Lista ${cop(l.precioLista)}${l.precio < l.costo ? ' · <span class="etiqueta peligro">bajo costo</span>' : ''}</span></div>
-        <input type="number" min="1" max="${l.disponible}" value="${l.cantidad}" data-campo="cantidad" aria-label="Cantidad">
-        <input type="number" min="0" value="${l.precio}" data-campo="precio" aria-label="Precio unitario">
-        <div class="desc"><select data-campo="descTipo" aria-label="Tipo de descuento"><option value="">—</option><option value="PORCENTAJE" ${l.descTipo === 'PORCENTAJE' ? 'selected' : ''}>%</option><option value="VALOR" ${l.descTipo === 'VALOR' ? 'selected' : ''}>$</option></select>
-          <input type="number" min="0" value="${l.descValor}" data-campo="descValor" aria-label="Descuento"></div>
-        <strong class="num" data-total>${cop(l.total)}</strong>
-        <button type="button" class="icono peligro" data-quitar aria-label="Quitar">✕</button>
-      </div>`).join('') : '<p class="vacio">Busca productos y agrégalos al carrito.</p>';
-    calcular();
+        <label><span class="rotulo">Cantidad</span><input type="number" min="1" max="${l.disponible}" value="${l.cantidad}" data-campo="cantidad" aria-label="Cantidad"></label>
+        <label><span class="rotulo">Precio c/u</span><input type="number" min="0" value="${l.precio}" data-campo="precio" aria-label="Precio unitario"></label>
+        <label><span class="rotulo">Descuento (% o $)</span><span class="desc"><select data-campo="descTipo" aria-label="Tipo de descuento"><option value="">—</option><option value="PORCENTAJE" ${l.descTipo === 'PORCENTAJE' ? 'selected' : ''}>%</option><option value="VALOR" ${l.descTipo === 'VALOR' ? 'selected' : ''}>$</option></select>
+          <input type="number" min="0" value="${l.descValor}" data-campo="descValor" aria-label="Descuento"></span></label>
+        <div><span class="rotulo">Total</span><strong class="num" data-total>${cop(l.total)}</strong></div>
+        <button type="button" class="icono peligro" data-quitar aria-label="Quitar ${esc(l.nombre)}" title="Quitar del carrito">✕</button>
+      </div>`).join('')}` : '<p class="vacio">Busca productos y agrégalos al carrito.</p>';
   };
 
   $('#carrito', m).addEventListener('input', (e) => {
@@ -1097,6 +1172,7 @@ async function configuracion() {
   $('#form-logo').addEventListener('submit', (e) => {
     e.preventDefault();
     intentar(async () => {
+      // El logo se sube tal cual para conservar su fondo transparente.
       await api('/api/configuracion/logo', { metodo: 'POST', formulario: new FormData(e.target) });
       avisar('Logo actualizado');
       configuracion();

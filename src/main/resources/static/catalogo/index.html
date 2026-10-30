@@ -24,6 +24,12 @@
     .chip { border-radius: 999px; padding: .35em .9em; font-size: .9rem; }
     .chip.activo { background: var(--principal); color: var(--sobre-principal); border-color: var(--principal); }
     .grilla { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 1em; }
+    @media (max-width: 520px) {
+      .grilla { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .6em; }
+      .producto .info { padding: .6em; font-size: .9rem; }
+      .producto .precio { font-size: 1rem; }
+      .producto .cantidad strong { font-size: .8rem; }
+    }
     .producto { background: var(--superficie); border: 1px solid var(--borde); border-radius: var(--radio); overflow: hidden; display: flex; flex-direction: column; box-shadow: var(--sombra); }
     .producto .foto { position: relative; aspect-ratio: 1; background: var(--rosa); cursor: pointer; border: 0; padding: 0; border-radius: 0; width: 100%; display: block; }
     .producto .foto img { width: 100%; height: 100%; object-fit: cover; display: block; }

@@ -77,11 +77,38 @@
       main.contenido { padding: 1em 16px 4em; }
       .carrito-linea { grid-template-columns: 1fr 1fr; }
       .carrito-linea .nombre { grid-column: 1 / -1; }
+      .carrito-titulos { display: none; }
+
+      /* En el celular cada fila de tabla se ve como una tarjeta, con el nombre de cada dato
+         (data-label lo pone app.js copiando el encabezado de la columna). */
+      .tabla-contenedor { border: 0; background: none; overflow: visible; }
+      .tabla-contenedor table, .tabla-contenedor tbody, .tabla-contenedor tr, .tabla-contenedor td { display: block; width: 100%; }
+      .tabla-contenedor thead { display: none; }
+      .tabla-contenedor tr { background: var(--superficie); border: 1px solid var(--borde); border-radius: var(--radio); padding: .4em .8em; margin-bottom: .7em; }
+      .tabla-contenedor td { border: 0; padding: .3em 0; text-align: right; overflow-wrap: anywhere; }
+      .tabla-contenedor td[data-label]::before { content: attr(data-label); float: left; margin-right: 1em; font-size: .78rem; font-weight: 700; color: var(--texto-suave); text-transform: uppercase; letter-spacing: .03em; }
+      .tabla-contenedor td::after { content: ""; display: block; clear: both; }
+      .tabla-contenedor td:not([data-label]) { text-align: left; }
+      .tabla-contenedor td.fila { display: flex; justify-content: flex-start; flex-wrap: wrap; padding-top: .6em; }
+      .tabla-contenedor td.fila::after { display: none; }
+      .tabla-contenedor td:empty { display: none; }
+    }
+    .fondo-menu { display: none; }
+    @media (max-width: 860px) {
+      .app.menu-abierto .fondo-menu { display: block; position: fixed; inset: 0; background: rgba(30, 18, 22, .4); z-index: 39; }
+      .menu-movil { position: sticky; top: 8px; z-index: 30; margin-bottom: .6em; }
+    }
+    .carrito-titulos { display: grid; grid-template-columns: 1fr 70px 110px 150px 100px 34px; gap: .5em; font-size: .75rem; font-weight: 700; color: var(--texto-suave); text-transform: uppercase; padding-top: .5em; }
+    .carrito-linea .rotulo { display: none; }
+    @media (max-width: 860px) {
+      .carrito-linea .rotulo { display: block; font-size: .75rem; font-weight: 700; color: var(--texto-suave); }
+      .carrito-linea label { gap: .1em; }
     }
   </style>
 </head>
 <body>
   <div class="app" id="app">
+    <div class="fondo-menu" id="fondo-menu"></div>
     <aside class="lateral">
       <div class="marca">Vivanet Colección</div>
       <div class="sistema">BeautyStock</div>

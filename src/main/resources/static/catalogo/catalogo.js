@@ -128,7 +128,7 @@ function dibujarProductos() {
         <span class="nombre">${esc(p.nombre)}</span>
         <span class="precio">${cop(p.precio)}</span>
         ${agotado ? '<button disabled>Agotado</button>'
-          : enCarrito ? `<div class="cantidad" style="justify-content:space-between"><button data-menos="${p.id}" aria-label="Quitar uno">−</button><strong>${enCarrito} en tu pedido</strong><button data-mas="${p.id}" aria-label="Agregar uno">+</button></div>`
+          : enCarrito ? `<div class="cantidad" style="display:flex;justify-content:space-between"><button data-menos="${p.id}" aria-label="Quitar uno">−</button><strong title="En tu pedido">${enCarrito} 🛍️</strong><button data-mas="${p.id}" aria-label="Agregar uno">+</button></div>`
           : `<button class="primario" data-mas="${p.id}" style="justify-content:center">Agregar</button>`}
       </div></article>`;
   }).join('') || '<p class="vacio" style="grid-column:1/-1">No encontramos productos.</p>';
@@ -229,7 +229,9 @@ function dibujarCarrito() {
         <span class="total">Total</span><span class="total">${cop(subtotal + domicilio)}</span>
       </div>
       <p class="suave" style="margin:0;font-size:.85rem">Puedes pagar por transferencia o Nequi por anticipado, o al recibir/recoger. Coordinaremos la entrega por WhatsApp.</p>
-      <button class="boton whatsapp" id="enviar">Enviar pedido por WhatsApp</button>
+      ${catalogo.negocio.whatsapp
+        ? '<button class="boton whatsapp" id="enviar">Enviar pedido por WhatsApp</button>'
+        : '<p class="aviso error" style="margin:0">Por ahora no podemos recibir pedidos en línea. Vuelve pronto.</p>'}
     </form>`;
   const form = $('#form-pedido');
   form.addEventListener('input', () => {

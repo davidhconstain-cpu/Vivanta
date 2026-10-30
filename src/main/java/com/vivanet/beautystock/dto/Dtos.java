@@ -202,6 +202,8 @@ public final class Dtos {
 
     public record PanelDto(long ventasHoy, long utilidadHoy, int numeroVentasHoy, long ventasMes, long utilidadMes,
             long cuentasPorCobrar, long cuentasPorPagar, long unidadesInventario, long valorInventario,
-            long pedidosPendientes, List<AlertaDto> alertas) {
+            long pedidosPendientes, List<AlertaDto> alertas,
+            /** Para la guia de primeros pasos del panel. */
+            boolean whatsappConfigurado, int productosActivos) {
     }
 }
