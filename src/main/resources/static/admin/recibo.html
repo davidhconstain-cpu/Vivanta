@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Recibo · Vivanet Colección</title>
+  <link href="https://fonts.googleapis.com/css2?family=Nunito+Sans:wght@400;600;700&family=Playfair+Display:wght@600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/estilos.css">
+  <style>
+    /* El recibo siempre se imprime en claro */
+    :root, :root[data-theme] { color-scheme: light; --fondo: #F2F0EB; --superficie: #fff; --texto: #3b2a2e; --texto-suave: #7b6a6e; --borde: #e6dcd8; --principal: #C65360; --rosa: #F3D8D8; --superficie-2: #faf6f4; }
+    body { background: var(--fondo); padding: 16px; }
+    .recibo { max-width: 720px; margin: 0 auto; background: #fff; padding: 2em; border-radius: 14px; box-shadow: var(--sombra); border-top: 8px solid var(--principal); }
+    .encabezado { display: flex; gap: 1.2em; align-items: center; border-bottom: 2px solid var(--rosa); padding-bottom: 1em; margin-bottom: 1em; flex-wrap: wrap; }
+    .encabezado img { max-height: 70px; max-width: 160px; }
+    .encabezado .datos { flex: 1; font-size: .9rem; color: var(--texto-suave); }
+    .encabezado .numero { text-align: right; }
+    .encabezado .numero strong { font-size: 1.3rem; color: var(--principal); display: block; }
+    .totales { display: grid; grid-template-columns: auto auto; gap: .3em 1.5em; justify-content: end; margin-top: 1em; font-variant-numeric: tabular-nums; }
+    .totales .grande { font-size: 1.25rem; font-weight: 700; color: var(--principal); }
+    .acciones { max-width: 720px; margin: 0 auto 1em; display: flex; gap: .6em; justify-content: flex-end; }
+    .notas { margin-top: 1.5em; font-size: .88rem; color: var(--texto-suave); border-top: 1px dashed var(--borde); padding-top: .8em; white-space: pre-line; }
+    .anulada { color: #c0392b; font-weight: 700; font-size: 1.1rem; text-align: center; border: 2px solid #c0392b; padding: .4em; border-radius: 8px; margin-bottom: 1em; }
+    @media print {
+      body { background: #fff; padding: 0; }
+      .acciones { display: none; }
+      .recibo { box-shadow: none; border-radius: 0; padding: 0; }
+    }
+  </style>
+</head>
+<body>
+  <div class="acciones"><button onclick="window.close()">Cerrar</button><button class="primario" onclick="window.print()">Imprimir / Guardar PDF</button></div>
+  <div class="recibo" id="recibo"><p class="suave">Cargando…</p></div>
+  <script>
+    const cop = (n) => '$' + Math.round(n || 0).toLocaleString('es-CO');
+    const esc = (t) => String(t ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    const METODOS = { EFECTIVO: 'Efectivo', TRANSFERENCIA: 'Transferencia', NEQUI: 'Nequi' };
+
+    (async () => {
+      const id = new URLSearchParams(location.search).get('id');
+      const [vr, cr] = await Promise.all([fetch('/api/ventas/' + id), fetch('/api/configuracion')]);
+      if (!vr.ok || !cr.ok) { document.getElementById('recibo').textContent = 'No se pudo cargar el recibo.'; return; }
+      const v = await vr.json();
+      const c = await cr.json();
+      document.title = 'Recibo ' + v.numero;
+      document.getElementById('recibo').innerHTML = `
+        ${v.estado === 'ANULADA' ? '<div class="anulada">VENTA ANULADA — ' + esc(v.motivoAnulacion) + '</div>' : ''}
+        <div class="encabezado">
+          ${c.reciboMostrarLogo && c.tieneLogo ? '<img src="/api/public/logo" alt="">' : ''}
+          <div class="datos">
+            <h1 class="marca" style="margin:0">${esc(c.nombreNegocio)}</h1>
+            ${c.reciboMostrarDireccion && c.direccion ? esc(c.direccion) + '<br>' : ''}
+            ${c.reciboMostrarTelefono && c.telefono ? 'Tel. ' + esc(c.telefono) + '<br>' : ''}
+            ${c.correo ? esc(c.correo) : ''}
+          </div>
+          <div class="numero">Recibo interno<strong>${v.numero}</strong>${new Date(v.fechaHora).toLocaleString('es-CO')}</div>
+        </div>
+        ${c.reciboMostrarCliente && v.clienteNombre ? `<p><strong>Cliente:</strong> ${esc(v.clienteNombre)}${v.clienteTelefono ? ' · ' + esc(v.clienteTelefono) : ''}</p>` : ''}
+        <div class="tabla-contenedor"><table>
+          <thead><tr><th>Producto</th><th class="num">Cant.</th><th class="num">Precio</th><th class="num">Desc.</th><th class="num">Total</th></tr></thead>
+          <tbody>${v.items.map((i) => `<tr><td>${esc(i.productoNombre)}</td><td class="num">${i.cantidad}</td><td class="num">${cop(i.precioUnitario)}</td><td class="num">${i.descuento ? '−' + cop(i.descuento) : ''}</td><td class="num">${cop(i.total)}</td></tr>`).join('')}</tbody>
+        </table></div>
+        <div class="totales">
+          <span>Subtotal</span><span>${cop(v.subtotal)}</span>
+          ${v.descuentoGlobal ? `<span>Descuento</span><span>−${cop(v.descuentoGlobal)}</span>` : ''}
+          ${v.cargoDomicilio ? `<span>Domicilio</span><span>${cop(v.cargoDomicilio)}</span>` : ''}
+          <span class="grande">Total</span><span class="grande">${cop(v.total)}</span>
+          ${v.pagos.map((p) => `<span>Pago ${p.numero} (${METODOS[p.metodo]})</span><span>${cop(p.valor)}</span>`).join('')}
+          <span><strong>Saldo pendiente</strong></span><strong>${cop(v.saldo)}</strong>
+        </div>
+        ${v.fechaVencimiento && v.saldo ? `<p>Fecha límite de pago: <strong>${new Date(v.fechaVencimiento + 'T00:00').toLocaleDateString('es-CO')}</strong></p>` : ''}
+        <div class="notas">${esc(c.notasRecibo || 'Gracias por tu compra 💖')}\nEste documento es un recibo interno y no reemplaza la factura electrónica.</div>`;
+    })();
+  </script>
+</body>
+</html>

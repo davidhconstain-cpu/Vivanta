@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>BeautyStock · Vivanet Colección</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Nunito+Sans:wght@400;600;700&family=Playfair+Display:wght@600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/estilos.css">
+  <style>
+    .app { display: grid; grid-template-columns: 230px 1fr; min-height: 100vh; }
+    .lateral {
+      background: var(--superficie); border-right: 1px solid var(--borde);
+      padding: 1.2em .9em; display: flex; flex-direction: column; gap: .3em;
+      position: sticky; top: 0; height: 100vh;
+    }
+    .lateral .marca { font-size: 1.35rem; padding: 0 .5em; }
+    .lateral .sistema { font-size: .78rem; color: var(--texto-suave); padding: 0 .65em 1em; letter-spacing: .06em; text-transform: uppercase; }
+    .lateral nav { display: flex; flex-direction: column; gap: .15em; }
+    .lateral nav a {
+      text-decoration: none; color: var(--texto); padding: .6em .8em; border-radius: 10px;
+      display: flex; align-items: center; gap: .6em; font-weight: 600;
+    }
+    .lateral nav a:hover { background: var(--superficie-2); }
+    .lateral nav a.activo { background: var(--rosa); color: var(--texto); }
+    .lateral nav a .contador { margin-left: auto; background: var(--principal); color: var(--sobre-principal); border-radius: 999px; font-size: .72rem; padding: .05em .55em; }
+    .lateral .pie { margin-top: auto; display: flex; flex-direction: column; gap: .4em; }
+    .lateral .pie button { justify-content: center; }
+    main.contenido { padding: 1.6em 2em 4em; min-width: 0; }
+    .cabecera { display: flex; align-items: center; gap: .8em; flex-wrap: wrap; margin-bottom: 1.2em; }
+    .cabecera h1 { margin: 0; flex: 1; }
+    .barra { display: flex; gap: .6em; flex-wrap: wrap; align-items: center; margin-bottom: 1em; }
+    .barra input[type="search"] { max-width: 320px; }
+    .barra select { width: auto; }
+    .indicadores { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1em; margin-bottom: 1.4em; }
+    .indicador .titulo { font-size: .8rem; color: var(--texto-suave); font-weight: 700; text-transform: uppercase; letter-spacing: .04em; }
+    .indicador .valor { font-size: 1.6rem; font-weight: 700; margin-top: .2em; font-variant-numeric: tabular-nums; }
+    .indicador .detalle { font-size: .85rem; color: var(--texto-suave); }
+    .indicador.destacado { background: var(--principal); border-color: var(--principal); color: var(--sobre-principal); }
+    .indicador.destacado .titulo, .indicador.destacado .detalle { color: inherit; opacity: .85; }
+    .alertas { display: flex; flex-direction: column; gap: .5em; }
+    .alerta { display: flex; gap: .7em; align-items: center; padding: .65em .85em; border-radius: 10px; background: var(--superficie-2); border-left: 4px solid var(--beige); text-decoration: none; color: var(--texto); }
+    .alerta.agotado, .alerta.vencido { border-left-color: var(--peligro); }
+    .alerta.stock, .alerta.por-vencer { border-left-color: #d9b400; }
+    .alerta.pedido { border-left-color: var(--fucsia); }
+    .carrito-linea { display: grid; grid-template-columns: 1fr 70px 110px 150px 100px auto; gap: .5em; align-items: center; padding: .5em 0; border-bottom: 1px solid var(--borde); }
+    .carrito-linea .desc { display: flex; gap: .3em; }
+    .carrito-linea .desc select { width: 58px; padding-inline: .3em; }
+    .resultados { max-height: 240px; overflow-y: auto; border: 1px solid var(--borde); border-radius: 10px; margin-top: .3em; }
+    .resultados button { width: 100%; border: 0; border-bottom: 1px solid var(--borde); border-radius: 0; justify-content: space-between; background: transparent; text-align: left; white-space: normal; }
+    .resultados button:hover { background: var(--superficie-2); }
+    .totales { display: grid; grid-template-columns: auto auto; gap: .3em 1.4em; justify-content: end; font-variant-numeric: tabular-nums; }
+    .totales .grande { font-size: 1.35rem; font-weight: 700; }
+    .galeria { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: .7em; }
+    .galeria figure { margin: 0; border: 1px solid var(--borde); border-radius: 10px; overflow: hidden; }
+    .galeria img { width: 100%; aspect-ratio: 1; object-fit: cover; display: block; }
+    .galeria figcaption { display: flex; justify-content: space-between; padding: .3em; }
+    .pedido-tarjeta { display: flex; flex-direction: column; gap: .5em; }
+    .lista-pedidos { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 1em; }
+    .pestanas { display: flex; gap: .3em; margin-bottom: 1em; border-bottom: 1px solid var(--borde); }
+    .pestanas button { border: 0; border-bottom: 3px solid transparent; border-radius: 0; background: transparent; font-weight: 700; color: var(--texto-suave); }
+    .pestanas button.activo { border-bottom-color: var(--principal); color: var(--texto); }
+    .menu-movil { display: none; }
+    #qr img { width: 180px; height: 180px; background: #fff; padding: 8px; border-radius: 10px; }
+
+    @media (max-width: 860px) {
+      .app { grid-template-columns: 1fr; }
+      .lateral {
+        position: fixed; inset: 0 auto 0 0; width: 250px; z-index: 40;
+        transform: translateX(-100%); transition: transform .2s; box-shadow: var(--sombra);
+      }
+      .app.menu-abierto .lateral { transform: none; }
+      .menu-movil { display: inline-flex; }
+      main.contenido { padding: 1em 16px 4em; }
+      .carrito-linea { grid-template-columns: 1fr 1fr; }
+      .carrito-linea .nombre { grid-column: 1 / -1; }
+    }
+  </style>
+</head>
+<body>
+  <div class="app" id="app">
+    <aside class="lateral">
+      <div class="marca">Vivanet Colección</div>
+      <div class="sistema">BeautyStock</div>
+      <nav id="menu">
+        <a href="#panel" data-vista="panel">🏠 Panel</a>
+        <a href="#ventas" data-vista="ventas">🛍️ Ventas</a>
+        <a href="#pedidos" data-vista="pedidos">📦 Pedidos <span class="contador" id="contador-pedidos" hidden></span></a>
+        <a href="#productos" data-vista="productos">💄 Productos</a>
+        <a href="#compras" data-vista="compras">🚚 Compras</a>
+        <a href="#inventario" data-vista="inventario">📋 Inventario</a>
+        <a href="#clientes" data-vista="clientes">👥 Clientes</a>
+        <a href="#configuracion" data-vista="configuracion">⚙️ Configuración</a>
+      </nav>
+      <div class="pie">
+        <a class="boton" href="/catalogo/" target="_blank" rel="noopener">Ver catálogo ↗</a>
+        <button type="button" id="tema">🌓 Cambiar tema</button>
+        <form method="post" action="/logout"><button type="submit" style="width:100%">Cerrar sesión</button></form>
+      </div>
+    </aside>
+    <main class="contenido">
+      <button type="button" class="menu-movil" id="abrir-menu" aria-label="Menú">☰ Menú</button>
+      <div id="vista"></div>
+    </main>
+  </div>
+  <div id="avisos" aria-live="polite"></div>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
+  <script src="/admin/app.js"></script>
+</body>
+</html>

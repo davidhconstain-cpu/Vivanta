@@ -1,0 +1,4 @@
+# Copia este archivo como local.properties y pon tus contrasenas.
+# local.properties esta en .gitignore y no se sube a GitHub.
+DB_PASSWORD=tu_contrasena_de_postgres
+ADMIN_PASSWORD=contrasena_del_administrador
