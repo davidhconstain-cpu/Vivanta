@@ -123,6 +123,43 @@ async function actualizarContadorPedidos() {
   contador.textContent = n;
 }
 
+// ---------- Sesion activa mientras se usa la app ----------
+// El servidor cierra la sesion tras 30 minutos sin peticiones. Si estas usando la pantalla
+// (mouse, teclado, toques) pero sin consultar nada, se le avisa cada 4 minutos que sigues aqui.
+// Si de verdad no hay actividad en 30 minutos, se vuelve al inicio de sesion.
+
+const MINUTO = 60 * 1000;
+let ultimaActividad = Date.now();
+let ultimoLatido = Date.now();
+
+['mousemove', 'mousedown', 'keydown', 'scroll', 'touchstart'].forEach((evento) =>
+  window.addEventListener(evento, () => { ultimaActividad = Date.now(); }, { passive: true }));
+
+async function latido() {
+  const inactivo = Date.now() - ultimaActividad;
+  if (inactivo >= 30 * MINUTO) {
+    location.href = '/login.html?expiro';
+    return;
+  }
+  // Solo avisa si hubo actividad desde el ultimo aviso.
+  if (ultimaActividad > ultimoLatido) {
+    ultimoLatido = Date.now();
+    await api('/api/sesion').catch(() => { /* api() ya envia al login si la sesion expiro */ });
+  }
+}
+setInterval(latido, 4 * MINUTO);
+// Al volver a la pestana (por ejemplo, desde el celular) se revisa enseguida.
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState !== 'visible') return;
+  if (Date.now() - ultimaActividad >= 30 * MINUTO) {
+    location.href = '/login.html?expiro';
+  } else {
+    ultimaActividad = Date.now();
+    ultimoLatido = Date.now();
+    api('/api/sesion').catch(() => {});
+  }
+});
+
 // Tema claro / oscuro (se recuerda en este navegador).
 function aplicarTema(tema) {
   if (tema) document.documentElement.dataset.theme = tema;
