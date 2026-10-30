@@ -3,135 +3,209 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>BeautyStock · Vivanet Colección</title>
+  <title>BeautyStock · Vivanta Colección</title>
+  <link rel="icon" type="image/png" href="/img/favicon.png">
   <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=Nunito+Sans:wght@400;600;700&family=Playfair+Display:wght@600&display=swap" rel="stylesheet">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@600;700&family=Jost:wght@400;500;600&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/css/estilos.css">
   <style>
-    .app { display: grid; grid-template-columns: 230px 1fr; min-height: 100vh; }
+    /* ---------- Estructura: menu lateral + contenido ---------- */
+    .app { display: grid; grid-template-columns: 248px 1fr; min-height: 100vh; }
     .lateral {
       background: var(--superficie); border-right: 1px solid var(--borde);
-      padding: 1.2em .9em; display: flex; flex-direction: column; gap: .3em;
-      position: sticky; top: 0; height: 100vh;
+      padding: 28px 20px; display: flex; flex-direction: column; gap: 28px;
+      position: sticky; top: 0; height: 100vh; overflow-y: auto;
     }
-    .lateral .marca { font-size: 1.35rem; padding: 0 .5em; }
-    .lateral .sistema { font-size: .78rem; color: var(--texto-suave); padding: 0 .65em 1em; letter-spacing: .06em; text-transform: uppercase; }
-    .lateral nav { display: flex; flex-direction: column; gap: .15em; }
+    .lateral .logo { width: 176px; margin: 0 auto; }
+    .lateral nav { display: flex; flex-direction: column; gap: 6px; }
     .lateral nav a {
-      text-decoration: none; color: var(--texto); padding: .6em .8em; border-radius: 10px;
-      display: flex; align-items: center; gap: .6em; font-weight: 600;
+      display: flex; align-items: center; gap: 12px; min-height: 44px; padding: 0 14px;
+      border-radius: 12px; color: var(--texto); text-decoration: none; font-size: 15px; font-weight: 500;
     }
     .lateral nav a:hover { background: var(--superficie-2); }
-    .lateral nav a.activo { background: var(--rosa); color: var(--texto); }
-    .lateral nav a .contador { margin-left: auto; background: var(--principal); color: var(--sobre-principal); border-radius: 999px; font-size: .72rem; padding: .05em .55em; }
-    .lateral .pie { margin-top: auto; display: flex; flex-direction: column; gap: .4em; }
-    .lateral .pie button { justify-content: center; }
-    main.contenido { padding: 1.6em 2em 4em; min-width: 0; }
-    .cabecera { display: flex; align-items: center; gap: .8em; flex-wrap: wrap; margin-bottom: 1.2em; }
-    .cabecera h1 { margin: 0; flex: 1; }
-    .barra { display: flex; gap: .6em; flex-wrap: wrap; align-items: center; margin-bottom: 1em; }
-    .barra input[type="search"] { max-width: 320px; }
-    .barra select { width: auto; }
-    .indicadores { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1em; margin-bottom: 1.4em; }
-    .indicador .titulo { font-size: .8rem; color: var(--texto-suave); font-weight: 700; text-transform: uppercase; letter-spacing: .04em; }
-    .indicador .valor { font-size: 1.6rem; font-weight: 700; margin-top: .2em; font-variant-numeric: tabular-nums; }
-    .indicador .detalle { font-size: .85rem; color: var(--texto-suave); }
-    .indicador.destacado { background: var(--principal); border-color: var(--principal); color: var(--sobre-principal); }
-    .indicador.destacado .titulo, .indicador.destacado .detalle { color: inherit; opacity: .85; }
-    .alertas { display: flex; flex-direction: column; gap: .5em; }
-    .alerta { display: flex; gap: .7em; align-items: center; padding: .65em .85em; border-radius: 10px; background: var(--superficie-2); border-left: 4px solid var(--beige); text-decoration: none; color: var(--texto); }
-    .alerta.agotado, .alerta.vencido { border-left-color: var(--peligro); }
-    .alerta.stock, .alerta.por-vencer { border-left-color: #d9b400; }
-    .alerta.pedido { border-left-color: var(--fucsia); }
-    .carrito-linea { display: grid; grid-template-columns: 1fr 70px 110px 150px 100px auto; gap: .5em; align-items: center; padding: .5em 0; border-bottom: 1px solid var(--borde); }
-    .carrito-linea .desc { display: flex; gap: .3em; }
-    .carrito-linea .desc select { width: 58px; padding-inline: .3em; }
-    .resultados { max-height: 240px; overflow-y: auto; border: 1px solid var(--borde); border-radius: 10px; margin-top: .3em; }
-    .resultados button { width: 100%; border: 0; border-bottom: 1px solid var(--borde); border-radius: 0; justify-content: space-between; background: transparent; text-align: left; white-space: normal; }
-    .resultados button:hover { background: var(--superficie-2); }
-    .totales { display: grid; grid-template-columns: auto auto; gap: .3em 1.4em; justify-content: end; font-variant-numeric: tabular-nums; }
-    .totales .grande { font-size: 1.35rem; font-weight: 700; }
-    .galeria { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: .7em; }
-    .galeria figure { margin: 0; border: 1px solid var(--borde); border-radius: 10px; overflow: hidden; }
-    .galeria img { width: 100%; aspect-ratio: 1; object-fit: cover; display: block; }
-    .galeria figcaption { display: flex; justify-content: space-between; padding: .3em; }
-    .pedido-tarjeta { display: flex; flex-direction: column; gap: .5em; }
-    .lista-pedidos { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 1em; }
-    .pestanas { display: flex; gap: .3em; margin-bottom: 1em; border-bottom: 1px solid var(--borde); }
-    .pestanas button { border: 0; border-bottom: 3px solid transparent; border-radius: 0; background: transparent; font-weight: 700; color: var(--texto-suave); }
-    .pestanas button.activo { border-bottom-color: var(--principal); color: var(--texto); }
-    .foto-boton { padding: 0; border: 0; background: none; border-radius: 8px; }
-    .foto-boton:hover .miniatura { outline: 2px solid var(--principal); }
-    .miniatura.sin-foto { display: grid; place-items: center; font-size: .8rem; color: var(--principal); border: 1px dashed var(--principal); }
-    .menu-movil { display: none; }
-    #qr img { width: 180px; height: 180px; background: #fff; padding: 8px; border-radius: 10px; }
+    .lateral nav a.activo { background: var(--rosa); font-weight: 600; }
+    .lateral nav a .contador { margin-left: auto; background: var(--fucsia); color: #fff; border-radius: 999px; font-size: .72rem; font-weight: 600; padding: 1px 8px; }
+    .lateral .pie { margin-top: auto; display: flex; flex-direction: column; gap: 8px; }
+    .lateral .pie button { width: 100%; font-weight: 500; }
+    main.contenido { padding: 32px 40px 64px; min-width: 0; display: flex; flex-direction: column; gap: 24px; }
+    #vista { display: flex; flex-direction: column; gap: 24px; min-width: 0; }
+    .barra-movil { display: none; }
 
-    @media (max-width: 860px) {
+    /* ---------- Encabezado de cada vista ---------- */
+    .cabecera { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px; }
+    .cabecera h1 { margin: 0; }
+    .cabecera .sub { margin: 6px 0 0; color: var(--texto-suave); }
+    .cabecera .acciones { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+    .titulo-numero { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+    .boton-campana { position: relative; width: 44px; padding: 0; }
+    .boton-campana .punto { position: absolute; top: 9px; right: 10px; width: 9px; height: 9px; border-radius: 50%; background: var(--fucsia); }
+    .barra { display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-end; }
+    .barra input[type="search"] { max-width: 360px; }
+    .barra select { width: auto; }
+    .chips { display: flex; gap: 8px; flex-wrap: wrap; }
+    .chip { border-radius: 999px; font-weight: 500; }
+    .chip[aria-pressed="true"] { border: 1.5px solid var(--principal); background: var(--rosa); font-weight: 600; }
+
+    /* ---------- Panel principal ---------- */
+    .indicadores { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 16px; }
+    .indicador { border-radius: var(--radio); padding: 22px; display: flex; flex-direction: column; gap: 6px; background: var(--superficie); border: 1px solid var(--borde); }
+    .indicador .titulo { font-size: 14px; font-weight: 500; }
+    .indicador .valor { font-family: var(--fuente-marca); font-size: 38px; font-weight: 700; line-height: 1.1; }
+    .indicador .detalle { font-size: 13px; color: var(--texto-suave); }
+    .indicador.rosa { background: var(--rosa); border-color: var(--rosa); }
+    .indicador.amarillo { background: var(--amarillo); border-color: var(--amarillo); }
+    .dos-columnas { display: flex; flex-wrap: wrap; gap: 20px; align-items: flex-start; }
+    .dos-columnas > .estrecha { flex: 1 1 360px; min-width: 0; }
+    .dos-columnas > .ancha { flex: 1.3 1 420px; min-width: 0; }
+    .meta + .meta { margin-top: 26px; }
+    .meta .encabezado { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 4px 12px; margin-bottom: 10px; }
+    .meta .encabezado strong { font-weight: 600; }
+    .progreso { height: 12px; background: var(--rosa); border-radius: 999px; overflow: hidden; }
+    .progreso div { height: 100%; background: var(--marca); border-radius: 999px; }
+    .lista-alertas { list-style: none; margin: 0; padding: 0; }
+    .lista-alertas li a { display: flex; align-items: center; gap: 14px; padding: 14px 0; border-top: 1px solid var(--linea); color: var(--texto); text-decoration: none; }
+    .lista-alertas li:first-child a { border-top: 0; }
+    .lista-alertas .tile { flex: 0 0 40px; height: 40px; border-radius: 12px; display: flex; align-items: center; justify-content: center; background: var(--amarillo); }
+    .lista-alertas .tile.rosa { background: var(--rosa); }
+    .lista-alertas .texto { flex: 1 1 auto; min-width: 0; }
+    .lista-alertas .texto strong { display: block; font-weight: 600; }
+    .lista-alertas .texto span { font-size: 13px; color: var(--texto-suave); }
+
+    /* ---------- Nueva venta / Entrada de mercancia (dos columnas) ---------- */
+    .pagina-doble { display: flex; flex-wrap: wrap; gap: 20px; align-items: flex-start; }
+    .pagina-doble > .principal { flex: 1.25 1 440px; min-width: 0; display: flex; flex-direction: column; gap: 18px; }
+    .pagina-doble > .lateral-derecho { flex: 1 1 340px; min-width: 0; display: flex; flex-direction: column; gap: 18px; position: sticky; top: 16px; }
+    .lista-productos { list-style: none; margin: 0; padding: 0; max-height: 640px; overflow-y: auto; }
+    .lista-productos li { display: flex; align-items: center; gap: 14px; padding: 12px 0; border-top: 1px solid var(--linea); }
+    .lista-productos li:first-child { border-top: 0; }
+    .lista-productos .texto { flex: 1 1 auto; min-width: 0; }
+    .lista-productos .texto strong { display: block; font-weight: 600; }
+    .lista-productos .texto span { font-size: 13px; color: var(--texto-suave); }
+    .lista-productos .precio { font-weight: 600; white-space: nowrap; }
+    .lineas-venta { list-style: none; margin: 0; padding: 0; }
+    .lineas-venta li { padding: 14px 0; border-top: 1px solid var(--linea); display: flex; flex-direction: column; gap: 10px; }
+    .lineas-venta .arriba { display: flex; justify-content: space-between; gap: 12px; font-weight: 600; }
+    .lineas-venta .abajo { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+    .lineas-venta .detalle { margin-left: auto; font-size: 13px; color: var(--texto-suave); text-align: right; }
+    .stepper { display: inline-flex; align-items: center; gap: 10px; }
+    .stepper button { width: 40px; min-height: 40px; padding: 0; font-size: 18px; }
+    .stepper output { min-width: 22px; text-align: center; font-weight: 600; }
+    .stepper .mas { background: var(--principal); border-color: var(--principal); color: var(--sobre-principal); }
+    .ajuste-precio { display: none; gap: 8px; width: 100%; }
+    .ajuste-precio.abierto { display: flex; flex-wrap: wrap; }
+    .ajuste-precio label { flex: 1 1 120px; }
+    .resumen { display: flex; flex-direction: column; gap: 8px; }
+    .resumen div { display: flex; justify-content: space-between; gap: 12px; }
+    .resumen .suave-fila { color: var(--texto-suave); }
+    .resumen .total { padding-top: 10px; border-top: 1px solid var(--linea); align-items: baseline; }
+    .resumen .total span:first-child { font-weight: 600; }
+    .resumen .total span:last-child { font-family: var(--fuente-marca); font-size: 34px; font-weight: 700; line-height: 1; }
+    .recientes { list-style: none; margin: 0; padding: 0; }
+    .recientes li { padding: 12px 0; border-top: 1px solid var(--linea); cursor: pointer; }
+    .recientes li:first-child { border-top: 0; }
+    .recientes .arriba, .recientes .abajo { display: flex; justify-content: space-between; gap: 10px; align-items: center; }
+    .recientes .arriba { font-weight: 600; }
+    .recientes .abajo { font-size: 13px; color: var(--texto-suave); margin-top: 4px; }
+    /* Cada linea: el producto ocupa una fila completa; debajo cantidad, costo, subtotal y quitar. */
+    .lineas-compra .linea { display: grid; grid-template-columns: 100px 150px minmax(0, 1fr) 40px; gap: 10px; align-items: end; padding: 12px 0; border-top: 1px solid var(--linea); }
+    .lineas-compra .linea > label:first-child { grid-column: 1 / -1; }
+    .lineas-compra .linea:first-child { border-top: 0; }
+    .lineas-compra .subtotal { min-height: 46px; display: flex; align-items: center; justify-content: flex-end; font-weight: 600; }
+
+    /* ---------- Inventario ---------- */
+    .producto-celda { display: flex; align-items: center; gap: 12px; }
+    .producto-celda strong { display: block; font-weight: 600; }
+    .producto-celda span { font-size: 13px; color: var(--texto-suave); }
+    .foto-boton { padding: 0; border: 0; background: none; min-height: 0; border-radius: 10px; }
+    .foto-boton:hover .miniatura { outline: 2px solid var(--principal); }
+    .miniatura.sin-foto { display: grid; place-items: center; font-size: .75rem; color: var(--principal); border: 1px dashed var(--principal); }
+    .pie-tabla { padding: 12px 14px; font-size: 13px; color: var(--texto-suave); border-top: 1px solid var(--linea); }
+    .acciones-producto { display: flex; gap: 8px; flex-wrap: wrap; }
+    .pestanas { display: flex; gap: 4px; border-bottom: 1px solid var(--borde); }
+    .pestanas button { border: 0; border-bottom: 3px solid transparent; border-radius: 0; background: transparent; color: var(--texto-suave); min-height: 44px; }
+    .pestanas button.activo { border-bottom-color: var(--principal); color: var(--texto); }
+
+    /* ---------- Pedidos ---------- */
+    .lista-pedidos { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 16px; }
+    .pedido-tarjeta { display: flex; flex-direction: column; gap: 10px; }
+    .pedido-tarjeta ul { margin: 0; padding-left: 1.2em; }
+    .galeria { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 10px; }
+    .galeria figure { margin: 0; border: 1px solid var(--borde); border-radius: 12px; overflow: hidden; }
+    .galeria img { width: 100%; aspect-ratio: 1; object-fit: cover; display: block; }
+    .galeria figcaption { display: flex; justify-content: space-between; padding: 6px; }
+    .totales { display: grid; grid-template-columns: auto auto; gap: .3em 1.4em; justify-content: end; font-variant-numeric: tabular-nums; }
+    .totales .grande { font-family: var(--fuente-marca); font-size: 1.6rem; font-weight: 700; }
+    #qr img { width: 180px; height: 180px; background: #fff; padding: 8px; border-radius: 12px; }
+
+    /* ---------- Celular ---------- */
+    .fondo-menu { display: none; }
+    @media (max-width: 900px) {
       .app { grid-template-columns: 1fr; }
       .lateral {
-        position: fixed; inset: 0 auto 0 0; width: 250px; z-index: 40;
+        position: fixed; inset: 0 auto 0 0; width: 264px; z-index: 40;
         transform: translateX(-100%); transition: transform .2s; box-shadow: var(--sombra);
       }
       .app.menu-abierto .lateral { transform: none; }
-      .menu-movil { display: inline-flex; }
-      main.contenido { padding: 1em 16px 4em; }
-      .carrito-linea { grid-template-columns: 1fr 1fr; }
-      .carrito-linea .nombre { grid-column: 1 / -1; }
-      .carrito-titulos { display: none; }
-
-      /* En el celular cada fila de tabla se ve como una tarjeta, con el nombre de cada dato
-         (data-label lo pone app.js copiando el encabezado de la columna). */
-      .tabla-contenedor { border: 0; background: none; overflow: visible; }
-      .tabla-contenedor table, .tabla-contenedor tbody, .tabla-contenedor tr, .tabla-contenedor td { display: block; width: 100%; }
-      .tabla-contenedor thead { display: none; }
-      .tabla-contenedor tr { background: var(--superficie); border: 1px solid var(--borde); border-radius: var(--radio); padding: .4em .8em; margin-bottom: .7em; }
-      .tabla-contenedor td { border: 0; padding: .3em 0; text-align: right; overflow-wrap: anywhere; }
-      .tabla-contenedor td[data-label]::before { content: attr(data-label); float: left; margin-right: 1em; font-size: .78rem; font-weight: 700; color: var(--texto-suave); text-transform: uppercase; letter-spacing: .03em; }
-      .tabla-contenedor td::after { content: ""; display: block; clear: both; }
-      .tabla-contenedor td:not([data-label]) { text-align: left; }
-      .tabla-contenedor td.fila { display: flex; justify-content: flex-start; flex-wrap: wrap; padding-top: .6em; }
-      .tabla-contenedor td.fila::after { display: none; }
-      .tabla-contenedor td:empty { display: none; }
-    }
-    .fondo-menu { display: none; }
-    @media (max-width: 860px) {
       .app.menu-abierto .fondo-menu { display: block; position: fixed; inset: 0; background: rgba(30, 18, 22, .4); z-index: 39; }
-      .menu-movil { position: sticky; top: 8px; z-index: 30; margin-bottom: .6em; }
-    }
-    .carrito-titulos { display: grid; grid-template-columns: 1fr 70px 110px 150px 100px 34px; gap: .5em; font-size: .75rem; font-weight: 700; color: var(--texto-suave); text-transform: uppercase; padding-top: .5em; }
-    .carrito-linea .rotulo { display: none; }
-    @media (max-width: 860px) {
-      .carrito-linea .rotulo { display: block; font-size: .75rem; font-weight: 700; color: var(--texto-suave); }
-      .carrito-linea label { gap: .1em; }
+      .barra-movil {
+        display: flex; align-items: center; justify-content: space-between; gap: 12px;
+        position: sticky; top: 0; z-index: 30; background: var(--superficie); border-bottom: 1px solid var(--borde);
+        padding: 8px 16px;
+      }
+      .barra-movil .logo { width: 110px; }
+      main.contenido { padding: 20px 16px 64px; }
+      h1 { font-size: 2rem; }
+      .indicador .valor { font-size: 32px; }
+      .pagina-doble > .lateral-derecho { position: static; }
+      .lineas-compra .linea { grid-template-columns: 1fr 1fr 40px; }
+      .lineas-compra .linea .subtotal { grid-column: 1 / 3; justify-content: flex-start; }
+
+      /* Tablas como tarjetas: cada dato con el nombre de su columna (data-label lo pone app.js). */
+      .tabla-contenedor { border: 0; background: none; overflow: visible; }
+      .tabla-contenedor table, .tabla-contenedor tbody, .tabla-contenedor tr, .tabla-contenedor td, .tabla-contenedor tbody th { display: block; width: 100%; }
+      .tabla-contenedor thead, .tabla-contenedor caption { display: none; }
+      .tabla-contenedor tr { background: var(--superficie); border: 1px solid var(--borde); border-radius: var(--radio); padding: 8px 14px; margin-bottom: 12px; }
+      .tabla-contenedor td, .tabla-contenedor tbody th { border: 0; padding: 6px 0; text-align: right; overflow-wrap: anywhere; }
+      .tabla-contenedor td[data-label]::before { content: attr(data-label); float: left; margin-right: 1em; font-size: .8rem; font-weight: 600; color: var(--texto-suave); }
+      .tabla-contenedor td::after { content: ""; display: block; clear: both; }
+      .tabla-contenedor td:not([data-label]), .tabla-contenedor tbody th { text-align: left; }
+      .tabla-contenedor td.fila { display: flex; justify-content: flex-start; flex-wrap: wrap; padding-top: 10px; }
+      .tabla-contenedor td.fila::after { display: none; }
+      .tabla-contenedor .pie-tabla { border: 0; }
     }
   </style>
 </head>
 <body>
   <div class="app" id="app">
     <div class="fondo-menu" id="fondo-menu"></div>
-    <aside class="lateral">
-      <div class="marca">Vivanet Colección</div>
-      <div class="sistema">BeautyStock</div>
+    <aside class="lateral" aria-label="Menú principal">
+      <img class="logo" src="/img/logo-vivanta.png" alt="Vivanta Colección" width="176" height="73">
       <nav id="menu">
-        <a href="#panel" data-vista="panel">🏠 Panel</a>
-        <a href="#ventas" data-vista="ventas">🛍️ Ventas</a>
-        <a href="#pedidos" data-vista="pedidos">📦 Pedidos <span class="contador" id="contador-pedidos" hidden></span></a>
-        <a href="#productos" data-vista="productos">💄 Productos</a>
-        <a href="#compras" data-vista="compras">🚚 Compras</a>
-        <a href="#inventario" data-vista="inventario">📋 Inventario</a>
-        <a href="#clientes" data-vista="clientes">👥 Clientes</a>
-        <a href="#configuracion" data-vista="configuracion">⚙️ Configuración</a>
+        <a href="#panel" data-vista="panel"><svg class="icono-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>Panel principal</a>
+        <a href="#ventas" data-vista="ventas"><svg class="icono-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 7h12l1 13H5L6 7z"/><path d="M9 7a3 3 0 0 1 6 0"/></svg>Ventas</a>
+        <a href="#pedidos" data-vista="pedidos"><svg class="icono-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a8.5 8.5 0 0 1-12.4 7.6L3 21l1.4-5.4A8.5 8.5 0 1 1 21 12z"/></svg>Pedidos <span class="contador" id="contador-pedidos" hidden></span></a>
+        <a href="#inventario" data-vista="inventario"><svg class="icono-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 8l9-5 9 5v8l-9 5-9-5V8z"/><path d="M3 8l9 5 9-5M12 13v8"/></svg>Inventario</a>
+        <a href="#compras" data-vista="compras"><svg class="icono-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 6h11v10H2zM13 10h4l3 3v3h-7"/><circle cx="6" cy="18" r="2"/><circle cx="16" cy="18" r="2"/></svg>Entrada de mercancía</a>
+        <a href="#clientes" data-vista="clientes"><svg class="icono-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="8" r="4"/><path d="M2 20v-1a5 5 0 0 1 5-5h4a5 5 0 0 1 5 5v1"/><path d="M16 4.2a4 4 0 0 1 0 7.6M22 20v-1a5 5 0 0 0-3.5-4.8"/></svg>Clientes</a>
+        <a href="/catalogo/" target="_blank" rel="noopener"><svg class="icono-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12V4h8l10 10-8 8L3 12z"/><circle cx="7.5" cy="8.5" r="1"/></svg>Catálogo ↗</a>
+        <a href="#configuracion" data-vista="configuracion"><svg class="icono-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6h9M17 6h3M4 12h3M11 12h9M4 18h11M19 18h1"/><circle cx="15" cy="6" r="2"/><circle cx="9" cy="12" r="2"/><circle cx="17" cy="18" r="2"/></svg>Configuración</a>
       </nav>
       <div class="pie">
-        <a class="boton" href="/catalogo/" target="_blank" rel="noopener">Ver catálogo ↗</a>
-        <button type="button" id="tema">🌓 Cambiar tema</button>
-        <form method="post" action="/logout"><button type="submit" style="width:100%">Cerrar sesión</button></form>
+        <button type="button" id="tema">Cambiar tema claro/oscuro</button>
+        <form method="post" action="/logout"><button type="submit">Cerrar sesión</button></form>
       </div>
     </aside>
-    <main class="contenido">
-      <button type="button" class="menu-movil" id="abrir-menu" aria-label="Menú">☰ Menú</button>
-      <div id="vista"></div>
-    </main>
+    <div>
+      <div class="barra-movil">
+        <button type="button" class="icono" id="abrir-menu" aria-label="Abrir menú"><svg class="icono-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/></svg></button>
+        <img class="logo" src="/img/logo-vivanta.png" alt="Vivanta Colección" width="110" height="46">
+        <span style="width:40px"></span>
+      </div>
+      <main class="contenido">
+        <div id="vista"></div>
+      </main>
+    </div>
   </div>
   <div id="avisos" aria-live="polite"></div>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>

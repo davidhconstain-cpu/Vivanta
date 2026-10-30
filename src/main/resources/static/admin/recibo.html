@@ -3,12 +3,14 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Recibo · Vivanet Colección</title>
-  <link href="https://fonts.googleapis.com/css2?family=Nunito+Sans:wght@400;600;700&family=Playfair+Display:wght@600&display=swap" rel="stylesheet">
+  <title>Recibo · Vivanta Colección</title>
+  <link rel="icon" type="image/png" href="/img/favicon.png">
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@600;700&family=Jost:wght@400;500;600&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/css/estilos.css">
   <style>
     /* El recibo siempre se imprime en claro */
-    :root, :root[data-theme] { color-scheme: light; --fondo: #F2F0EB; --superficie: #fff; --texto: #3b2a2e; --texto-suave: #7b6a6e; --borde: #e6dcd8; --principal: #C65360; --rosa: #F3D8D8; --superficie-2: #faf6f4; }
+    :root, :root[data-theme] { color-scheme: light; --fondo: #F2F0EB; --superficie: #fff; --texto: #3A2A2E; --texto-suave: #6E5A5F; --borde: #E6DFD8; --linea: #EFE8E1; --principal: #B04856; --marca: #C65360; --rosa: #F3D8D8; --superficie-2: #FAF7F4; }
+    .logo { background: none !important; padding: 0 !important; }
     body { background: var(--fondo); padding: 16px; }
     .recibo { max-width: 720px; margin: 0 auto; background: #fff; padding: 2em; border-radius: 14px; box-shadow: var(--sombra); border-top: 8px solid var(--principal); }
     .encabezado { display: flex; gap: 1.2em; align-items: center; border-bottom: 2px solid var(--rosa); padding-bottom: 1em; margin-bottom: 1em; flex-wrap: wrap; }
@@ -46,9 +48,9 @@
       document.getElementById('recibo').innerHTML = `
         ${v.estado === 'ANULADA' ? '<div class="anulada">VENTA ANULADA — ' + esc(v.motivoAnulacion) + '</div>' : ''}
         <div class="encabezado">
-          ${c.reciboMostrarLogo && c.tieneLogo ? '<img src="/api/public/logo" alt="">' : ''}
+          ${c.reciboMostrarLogo ? `<img class="logo" src="${c.tieneLogo ? '/api/public/logo' : '/img/logo-vivanta.png'}" alt="${esc(c.nombreNegocio)}">` : ''}
           <div class="datos">
-            <h1 class="marca" style="margin:0">${esc(c.nombreNegocio)}</h1>
+            <h1 class="marca" style="margin:0;font-size:1.8rem">${esc(c.nombreNegocio)}</h1>
             ${c.reciboMostrarDireccion && c.direccion ? esc(c.direccion) + '<br>' : ''}
             ${c.reciboMostrarTelefono && c.telefono ? 'Tel. ' + esc(c.telefono) + '<br>' : ''}
             ${c.correo ? esc(c.correo) : ''}

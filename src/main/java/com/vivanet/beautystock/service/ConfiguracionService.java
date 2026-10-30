@@ -23,7 +23,12 @@ public class ConfiguracionService {
     /** Devuelve la configuracion; la crea con valores iniciales la primera vez. */
     @Transactional
     public Configuracion obtener() {
-        return repositorio.findById(1L).orElseGet(() -> repositorio.save(new Configuracion()));
+        Configuracion c = repositorio.findById(1L).orElseGet(() -> repositorio.save(new Configuracion()));
+        // La marca se llamaba "Vivanet" en el primer borrador; si nadie cambio el nombre, se actualiza.
+        if ("Vivanet Colección".equals(c.getNombreNegocio())) {
+            c.setNombreNegocio(Configuracion.NOMBRE_INICIAL);
+        }
+        return c;
     }
 
     @Transactional
@@ -45,6 +50,8 @@ public class ConfiguracionService {
         c.setTiktok(datos.tiktok());
         c.setPorcentajeIncremento(datos.porcentajeIncremento());
         c.setCostoDomicilio(datos.costoDomicilio());
+        c.setMetaVentasMes(datos.metaVentasMes());
+        c.setMetaUtilidadMes(datos.metaUtilidadMes());
         c.setCatalogoHabilitado(datos.catalogoHabilitado());
         c.setMostrarAgotados(datos.mostrarAgotados());
         c.setNotasRecibo(datos.notasRecibo());
@@ -75,7 +82,8 @@ public class ConfiguracionService {
                 c.getCorreo(), c.getHorarios(), c.getInstagram(), c.getFacebook(), c.getTiktok(),
                 c.getPorcentajeIncremento(), c.getCostoDomicilio(), c.isCatalogoHabilitado(),
                 c.isMostrarAgotados(), c.getNotasRecibo(), c.isReciboMostrarLogo(), c.isReciboMostrarDireccion(),
-                c.isReciboMostrarTelefono(), c.isReciboMostrarCliente(), c.getLogoContentType() != null);
+                c.isReciboMostrarTelefono(), c.isReciboMostrarCliente(), c.getLogoContentType() != null,
+                c.getMetaVentasMes(), c.getMetaUtilidadMes());
     }
 
     /** Deja solo los digitos y agrega el indicativo de Colombia (57) si hace falta. */

@@ -15,7 +15,9 @@ public class Configuracion {
     @Id
     private Long id = 1L;
 
-    private String nombreNegocio = "Vivanet Colección";
+    public static final String NOMBRE_INICIAL = "Vivanta Colección";
+
+    private String nombreNegocio = NOMBRE_INICIAL;
     private String telefono;
     /** Numero de WhatsApp que recibe los pedidos del catalogo. */
     private String whatsapp;
@@ -30,6 +32,12 @@ public class Configuracion {
     private int porcentajeIncremento = 100;
 
     private long costoDomicilio;
+
+    /** Metas mensuales que muestra el panel (0 = sin meta). */
+    @Column(nullable = false, columnDefinition = "bigint default 0")
+    private long metaVentasMes;
+    @Column(nullable = false, columnDefinition = "bigint default 0")
+    private long metaUtilidadMes;
 
     private boolean catalogoHabilitado = true;
     /** true: los agotados se ven con etiqueta "Agotado"; false: se ocultan. */
@@ -70,6 +78,10 @@ public class Configuracion {
     public int getPorcentajeIncremento() { return porcentajeIncremento; }
     public void setPorcentajeIncremento(int v) { this.porcentajeIncremento = v; }
     public long getCostoDomicilio() { return costoDomicilio; }
+    public long getMetaVentasMes() { return metaVentasMes; }
+    public void setMetaVentasMes(long v) { this.metaVentasMes = v; }
+    public long getMetaUtilidadMes() { return metaUtilidadMes; }
+    public void setMetaUtilidadMes(long v) { this.metaUtilidadMes = v; }
     public void setCostoDomicilio(long v) { this.costoDomicilio = v; }
     public boolean isCatalogoHabilitado() { return catalogoHabilitado; }
     public void setCatalogoHabilitado(boolean v) { this.catalogoHabilitado = v; }

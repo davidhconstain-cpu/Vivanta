@@ -7,6 +7,7 @@ import java.util.Map;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -18,6 +19,8 @@ import com.vivanet.beautystock.dto.Dtos.ConfiguracionDto;
 import com.vivanet.beautystock.dto.Dtos.PanelDto;
 import com.vivanet.beautystock.entity.Configuracion;
 import com.vivanet.beautystock.service.ConfiguracionService;
+import com.vivanet.beautystock.service.ConsecutivoService;
+import com.vivanet.beautystock.service.NegocioException;
 import com.vivanet.beautystock.service.PanelService;
 
 import jakarta.validation.Valid;
@@ -27,15 +30,27 @@ public class ConfiguracionController {
 
     private final ConfiguracionService servicio;
     private final PanelService panel;
+    private final ConsecutivoService consecutivos;
 
-    public ConfiguracionController(ConfiguracionService servicio, PanelService panel) {
+    public ConfiguracionController(ConfiguracionService servicio, PanelService panel,
+            ConsecutivoService consecutivos) {
         this.servicio = servicio;
         this.panel = panel;
+        this.consecutivos = consecutivos;
     }
 
     @GetMapping("/api/sesion")
     public Map<String, String> sesion(Principal usuario) {
         return Map.of("usuario", usuario.getName());
+    }
+
+    /** Proximo numero de venta (V) o compra (C), para mostrarlo en el encabezado del formulario. */
+    @GetMapping("/api/consecutivos/{prefijo}")
+    public Map<String, String> proximo(@PathVariable String prefijo) {
+        if (!prefijo.equals("V") && !prefijo.equals("C")) {
+            throw new NegocioException("Prefijo no valido.");
+        }
+        return Map.of("numero", consecutivos.proximo(prefijo));
     }
 
     @GetMapping("/api/panel")

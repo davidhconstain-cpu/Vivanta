@@ -5,6 +5,7 @@ import java.time.LocalDateTime;
 import java.util.List;
 
 import com.vivanet.beautystock.entity.EstadoPedido;
+import com.vivanet.beautystock.entity.FormaPagoPedido;
 import com.vivanet.beautystock.entity.MetodoPago;
 import com.vivanet.beautystock.entity.TipoDescuento;
 import com.vivanet.beautystock.entity.TipoEntrega;
@@ -153,6 +154,7 @@ public final class Dtos {
             @NotBlank String nombre,
             @NotBlank String telefono,
             @NotNull TipoEntrega tipoEntrega,
+            FormaPagoPedido formaPago,
             String direccion,
             String observaciones,
             @NotEmpty List<@Valid PedidoItemRequest> items) {
@@ -163,7 +165,8 @@ public final class Dtos {
     }
 
     public record PedidoDto(Long id, String numero, LocalDateTime fechaHora, String nombreCliente, String telefono,
-            TipoEntrega tipoEntrega, String direccion, String observaciones, long subtotal, long costoDomicilio,
+            TipoEntrega tipoEntrega, FormaPagoPedido formaPago, String direccion, String observaciones,
+            long subtotal, long costoDomicilio,
             long total, EstadoPedido estado, Long ventaId, String ventaNumero, List<PedidoItemDto> items) {
     }
 
@@ -181,7 +184,8 @@ public final class Dtos {
             @Min(0) int porcentajeIncremento, @Min(0) long costoDomicilio,
             boolean catalogoHabilitado, boolean mostrarAgotados, String notasRecibo,
             boolean reciboMostrarLogo, boolean reciboMostrarDireccion, boolean reciboMostrarTelefono,
-            boolean reciboMostrarCliente, boolean tieneLogo) {
+            boolean reciboMostrarCliente, boolean tieneLogo,
+            @Min(0) long metaVentasMes, @Min(0) long metaUtilidadMes) {
     }
 
     public record NegocioPublicoDto(String nombreNegocio, String telefono, String whatsapp, String direccion,
@@ -198,13 +202,15 @@ public final class Dtos {
 
     // ---------- Panel ----------
 
-    public record AlertaDto(String tipo, String mensaje, String vista) {
+    /** Alerta del panel: titulo, detalle, etiqueta corta ("Agotado", "En 3 dias") y vista a la que lleva. */
+    public record AlertaDto(String tipo, String titulo, String detalle, String etiqueta, String vista) {
     }
 
     public record PanelDto(long ventasHoy, long utilidadHoy, int numeroVentasHoy, long ventasMes, long utilidadMes,
             long cuentasPorCobrar, long cuentasPorPagar, long unidadesInventario, long valorInventario,
             long pedidosPendientes, List<AlertaDto> alertas,
             /** Para la guia de primeros pasos del panel. */
-            boolean whatsappConfigurado, int productosActivos) {
+            boolean whatsappConfigurado, int productosActivos,
+            long metaVentasMes, long metaUtilidadMes, long clientesConSaldo) {
     }
 }

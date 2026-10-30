@@ -40,6 +40,9 @@ public class Pedido {
     @Enumerated(EnumType.STRING)
     private TipoEntrega tipoEntrega;
 
+    @Enumerated(EnumType.STRING)
+    private FormaPagoPedido formaPago;
+
     private String direccion;
 
     @Column(columnDefinition = "text")
@@ -71,6 +74,8 @@ public class Pedido {
     public void setTelefono(String telefono) { this.telefono = telefono; }
     public TipoEntrega getTipoEntrega() { return tipoEntrega; }
     public void setTipoEntrega(TipoEntrega tipoEntrega) { this.tipoEntrega = tipoEntrega; }
+    public FormaPagoPedido getFormaPago() { return formaPago; }
+    public void setFormaPago(FormaPagoPedido formaPago) { this.formaPago = formaPago; }
     public String getDireccion() { return direccion; }
     public void setDireccion(String direccion) { this.direccion = direccion; }
     public String getObservaciones() { return observaciones; }

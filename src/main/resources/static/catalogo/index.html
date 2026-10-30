@@ -3,87 +3,80 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Catálogo · Vivanet Colección</title>
-  <meta name="description" content="Catálogo de productos de belleza de Vivanet Colección. Haz tu pedido por WhatsApp.">
+  <title>Catálogo · Vivanta Colección</title>
+  <meta name="description" content="Catálogo de productos de belleza de Vivanta Colección. Haz tu pedido por WhatsApp.">
+  <link rel="icon" type="image/png" href="/img/favicon.png">
   <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=Nunito+Sans:wght@400;600;700&family=Playfair+Display:wght@600&display=swap" rel="stylesheet">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@600;700&family=Jost:wght@400;500;600&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/css/estilos.css">
   <style>
-    body { padding-bottom: 90px; }
-    .portada {
-      background: linear-gradient(135deg, var(--rosa), var(--fondo) 70%);
-      padding: 2em 16px 1.4em; text-align: center; border-bottom: 1px solid var(--borde);
-    }
-    .portada img { max-height: 90px; max-width: 220px; margin-bottom: .4em; }
-    .portada h1 { font-size: 2.1rem; color: var(--principal); margin-bottom: .1em; }
-    .portada p { margin: 0; color: var(--texto-suave); }
-    .contenedor { max-width: 1100px; margin: 0 auto; padding: 0 16px; }
-    .filtros { display: flex; gap: .5em; flex-wrap: wrap; align-items: center; margin: 1.2em 0; }
-    .filtros input { max-width: 340px; }
-    .chips { display: flex; gap: .4em; flex-wrap: wrap; }
-    .chip { border-radius: 999px; padding: .35em .9em; font-size: .9rem; }
-    .chip.activo { background: var(--principal); color: var(--sobre-principal); border-color: var(--principal); }
-    .grilla { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 1em; }
-    @media (max-width: 520px) {
-      .grilla { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .6em; }
-      .producto .info { padding: .6em; font-size: .9rem; }
-      .producto .precio { font-size: 1rem; }
-      .producto .cantidad strong { font-size: .8rem; }
-    }
-    .producto { background: var(--superficie); border: 1px solid var(--borde); border-radius: var(--radio); overflow: hidden; display: flex; flex-direction: column; box-shadow: var(--sombra); }
-    .producto .foto { position: relative; aspect-ratio: 1; background: var(--rosa); cursor: pointer; border: 0; padding: 0; border-radius: 0; width: 100%; display: block; }
-    .producto .foto img { width: 100%; height: 100%; object-fit: cover; display: block; }
-    .producto .foto .etiqueta { position: absolute; top: .6em; left: .6em; }
-    .producto .sin-foto { width: 100%; height: 100%; display: grid; place-items: center; font-family: var(--fuente-marca); color: var(--principal); font-size: 2.5rem; }
-    .producto .info { padding: .8em; display: flex; flex-direction: column; gap: .3em; flex: 1; }
-    .producto .marca-prod { font-size: .78rem; color: var(--texto-suave); text-transform: uppercase; letter-spacing: .05em; }
-    .producto .nombre { font-weight: 700; }
-    .producto .precio { font-size: 1.15rem; font-weight: 700; color: var(--principal); margin-top: auto; }
-    .producto.agotado .foto img { filter: grayscale(.8); opacity: .7; }
-    .boton-carrito {
-      position: fixed; right: 16px; bottom: 16px; z-index: 30; box-shadow: 0 8px 24px rgba(198, 83, 96, .4);
-      padding: .9em 1.3em; border-radius: 999px; font-size: 1rem;
-    }
-    .panel-carrito {
-      position: fixed; inset: 0 0 0 auto; width: min(420px, 100vw); background: var(--superficie); z-index: 60;
-      box-shadow: -10px 0 40px rgba(0, 0, 0, .2); display: flex; flex-direction: column; transform: translateX(100%); transition: transform .25s;
-    }
-    .panel-carrito.abierto { transform: none; }
-    .panel-carrito .cabeza { display: flex; align-items: center; padding: 1em; border-bottom: 1px solid var(--borde); }
-    .panel-carrito .cabeza h2 { flex: 1; margin: 0; }
-    .panel-carrito .cuerpo { overflow-y: auto; padding: 1em; flex: 1; display: flex; flex-direction: column; gap: .8em; }
-    .linea { display: grid; grid-template-columns: 52px 1fr auto; gap: .6em; align-items: center; }
-    .linea img, .linea .ph { width: 52px; height: 52px; border-radius: 8px; object-fit: cover; background: var(--rosa); }
-    .cantidad { display: inline-flex; align-items: center; gap: .3em; }
-    .cantidad button { padding: .15em .55em; }
-    .entrega { display: flex; gap: .5em; }
-    .entrega label { flex: 1; border: 1px solid var(--borde); border-radius: 10px; padding: .6em; flex-direction: row; align-items: center; gap: .4em; color: var(--texto); cursor: pointer; }
-    .entrega label:has(input:checked) { border-color: var(--principal); background: var(--rosa); }
-    .resumen { display: grid; grid-template-columns: 1fr auto; gap: .2em; font-variant-numeric: tabular-nums; }
-    .resumen .total { font-weight: 700; font-size: 1.2rem; color: var(--principal); }
-    .whatsapp { background: #25D366; border-color: #25D366; color: #fff; font-weight: 700; justify-content: center; width: 100%; padding: .85em; }
-    .whatsapp:hover { background: #1fb957; }
-    footer { margin-top: 3em; padding: 2em 16px; background: var(--superficie); border-top: 1px solid var(--borde); text-align: center; color: var(--texto-suave); }
-    footer .redes { display: flex; gap: .6em; justify-content: center; flex-wrap: wrap; margin: .8em 0; }
-    .mantenimiento { max-width: 520px; margin: 3em auto; text-align: center; }
-    .detalle-fotos { display: flex; gap: .5em; overflow-x: auto; scroll-snap-type: x mandatory; }
-    .detalle-fotos img { width: 100%; max-height: 60vh; object-fit: contain; flex: 0 0 100%; scroll-snap-align: start; border-radius: 10px; background: var(--rosa); }
-    .fondo-panel { position: fixed; inset: 0; background: rgba(30, 18, 22, .4); z-index: 55; }
+    body { padding-bottom: 96px; }
+    .cabeza { background: var(--superficie); border-bottom: 1px solid var(--borde); padding: 10px 16px; display: flex; justify-content: center; position: sticky; top: 0; z-index: 20; }
+    .cabeza .logo { width: 132px; }
+    .contenedor { max-width: 1100px; margin: 0 auto; padding: 14px 16px 0; }
+    .filtros { display: flex; flex-direction: column; gap: 12px; margin-bottom: 14px; }
+    .filtros input { height: 46px; border-radius: 23px; max-width: 520px; }
+    .chips { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 2px; scrollbar-width: none; }
+    .chips button { flex: 0 0 auto; border-radius: 999px; font-weight: 500; font-size: 14px; }
+    .chips button[aria-pressed="true"] { border: 1.5px solid var(--principal); background: var(--rosa); font-weight: 600; }
+    .grilla { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 14px; }
+    .producto { background: var(--superficie); border: 1px solid var(--borde); border-radius: 16px; padding: 8px 8px 10px; display: flex; flex-direction: column; gap: 6px; }
+    .producto .foto { position: relative; padding: 0; border: 0; min-height: 0; border-radius: 10px; overflow: hidden; background: var(--rosa); display: block; width: 100%; }
+    .producto .foto img { width: 100%; aspect-ratio: 4 / 3; object-fit: cover; display: block; }
+    .producto .foto .etiqueta { position: absolute; top: 8px; left: 8px; }
+    .producto.agotado .foto img { opacity: .45; }
+    .producto h2 { margin: 4px 4px 0; font-family: var(--fuente); font-size: 14px; font-weight: 500; line-height: 1.25; }
+    .producto .marca-prod { margin: 0 4px; font-size: 12px; color: var(--texto-suave); }
+    .producto .precio { margin: 0 4px; font-size: 16px; font-weight: 600; }
+    .producto.agotado .precio { color: var(--texto-suave); }
+    .producto .acciones { margin-top: auto; padding-top: 2px; }
+    .producto .acciones > button { width: 100%; }
+    .stepper { display: flex; align-items: center; justify-content: space-between; }
+    .stepper button { width: 44px; padding: 0; font-size: 20px; font-weight: 500; }
+    .stepper .mas { background: var(--principal); border-color: var(--principal); color: var(--sobre-principal); }
+    .stepper output { font-weight: 600; }
+
+    .barra-pedido { position: fixed; left: 0; right: 0; bottom: 0; background: var(--superficie); border-top: 1px solid var(--borde); padding: 12px 16px 16px; z-index: 30; }
+    .barra-pedido a { max-width: 560px; margin: 0 auto; display: flex; align-items: center; justify-content: space-between; min-height: 52px; padding: 0 20px; border-radius: 14px; background: var(--principal); color: var(--sobre-principal); text-decoration: none; font-size: 16px; font-weight: 600; }
+
+    .pedido { max-width: 560px; margin: 0 auto; padding: 12px 16px 24px; display: flex; flex-direction: column; gap: 16px; }
+    .volver { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; color: var(--principal); text-decoration: none; font-size: 15px; font-weight: 600; align-self: flex-start; }
+    .pedido h1 { margin: 0; font-size: 36px; }
+    .items { list-style: none; margin: 0; padding: 4px 16px; }
+    .items li { display: flex; align-items: center; gap: 12px; padding: 12px 0; border-top: 1px solid var(--linea); }
+    .items li:first-child { border-top: 0; }
+    .items img { flex: 0 0 56px; width: 56px; height: 56px; border-radius: 12px; object-fit: cover; background: var(--rosa); }
+    .items .texto { flex: 1 1 auto; min-width: 0; }
+    .items .texto strong { display: block; font-size: 15px; font-weight: 600; }
+    .items .texto span { font-size: 13px; color: var(--texto-suave); }
+    .items .quitar { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
+    .items .quitar button { min-height: 34px; width: 34px; padding: 0; }
+    .resumen-pedido { padding: 16px; display: flex; flex-direction: column; gap: 8px; }
+    .resumen-pedido div { display: flex; justify-content: space-between; }
+    .resumen-pedido .total { padding-top: 8px; border-top: 1px solid var(--linea); align-items: baseline; }
+    .resumen-pedido .total span:last-child { font-family: var(--fuente-marca); font-size: 34px; font-weight: 700; line-height: 1; }
+    .whatsapp { min-height: 54px; border-radius: 14px; font-size: 16px; }
+    .nota { margin: 0; font-size: 13px; line-height: 1.45; color: var(--texto-suave); text-align: center; }
+    .pedido .opciones .opcion { flex: 1 1 0; }
+
+    footer { margin-top: 40px; padding: 28px 16px; background: var(--superficie); border-top: 1px solid var(--borde); text-align: center; color: var(--texto-suave); display: flex; flex-direction: column; align-items: center; gap: 6px; }
+    footer .logo { width: 140px; margin-bottom: 6px; }
+    footer p { margin: 0; }
+    footer .redes { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; margin-top: 10px; }
+    .mantenimiento { max-width: 520px; margin: 3em auto; text-align: center; display: flex; flex-direction: column; gap: 12px; align-items: center; }
+    .detalle-fotos { display: flex; gap: 8px; overflow-x: auto; scroll-snap-type: x mandatory; }
+    .detalle-fotos img { width: 100%; max-height: 60vh; object-fit: contain; flex: 0 0 100%; scroll-snap-align: start; border-radius: 12px; background: var(--rosa); }
+    @media (min-width: 700px) { .producto h2 { font-size: 15px; } }
+    /* En el celular, dos productos por fila (como el diseno). */
+    @media (max-width: 520px) { .grilla { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
   </style>
 </head>
 <body>
-  <header class="portada" id="portada">
-    <h1>Vivanet Colección</h1>
-  </header>
-  <main class="contenedor" id="principal"><p class="suave" style="margin-top:2em">Cargando catálogo…</p></main>
+  <header class="cabeza"><a href="#" id="inicio"><img class="logo" src="/img/logo-vivanta.png" alt="Vivanta Colección" width="132" height="55"></a></header>
+  <main id="principal"><p class="suave contenedor">Cargando catálogo…</p></main>
   <footer id="pie"></footer>
-
-  <button class="primario boton-carrito" id="abrir-carrito" hidden>🛍️ <span id="cuenta">0</span> · <span id="total-boton">$0</span></button>
-  <div class="fondo-panel" id="fondo-panel" hidden></div>
-  <aside class="panel-carrito" id="panel-carrito" aria-label="Carrito">
-    <div class="cabeza"><h2>Tu pedido</h2><button class="icono" id="cerrar-carrito" aria-label="Cerrar">✕</button></div>
-    <div class="cuerpo" id="cuerpo-carrito"></div>
-  </aside>
+  <div class="barra-pedido" id="barra-pedido" hidden><a href="#pedido"><span id="barra-cuenta">Ver pedido</span><span id="barra-total">$0</span></a></div>
   <div id="avisos" aria-live="polite"></div>
   <script src="/catalogo/catalogo.js"></script>
 </body>

@@ -1,6 +1,6 @@
 // =====================================================================
-// BeautyStock - panel de administracion
-// Cada "vista" (Panel, Ventas, Productos...) es una funcion que dibuja
+// BeautyStock - panel de administracion de Vivanta Coleccion
+// Cada "vista" (Panel, Ventas, Inventario...) es una funcion que dibuja
 // su contenido dentro de <div id="vista"> usando datos de la API.
 // =====================================================================
 
@@ -16,11 +16,35 @@ const cop = (n) => '$' + Math.round(n || 0).toLocaleString('es-CO');
 const esc = (t) => String(t ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
 const fecha = (iso) => iso ? new Date(iso).toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' }) : '';
+const fechaCorta = (iso) => iso ? new Date(iso).toLocaleDateString('es-CO', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '';
 const fechaHora = (iso) => iso ? new Date(iso).toLocaleString('es-CO', { day: '2-digit', month: 'short', hour: 'numeric', minute: '2-digit' }) : '';
 const hoyISO = () => new Date().toLocaleDateString('en-CA');
-const METODOS = { EFECTIVO: 'Efectivo', TRANSFERENCIA: 'Transferencia', NEQUI: 'Nequi' };
+const METODOS = { EFECTIVO: 'Efectivo', NEQUI: 'Nequi', TRANSFERENCIA: 'Transferencia' };
 const opcionesMetodo = (sel) => Object.entries(METODOS).map(([v, t]) => `<option value="${v}" ${v === sel ? 'selected' : ''}>${t}</option>`).join('');
 const telWa = (t) => { const d = String(t || '').replace(/\D/g, ''); return d.length === 10 ? '57' + d : d; };
+const normalizar = (t) => String(t || '').normalize('NFD').replace(/\p{M}/gu, '').toLowerCase();
+
+/** Foto principal del producto o, si no tiene, el isotipo de Vivanta. */
+const fotoProducto = (p) => p.imagenes?.length ? `/api/public/imagenes/${p.imagenes[0]}` : '/img/isotipo-vivanta.png';
+
+/** Opciones tipo "pastilla" (radios), como en el diseno. */
+const pastillas = (nombre, opciones, elegida) => opciones.map(([valor, texto]) =>
+  `<label class="opcion"><input type="radio" name="${nombre}" value="${valor}" ${valor === elegida ? 'checked' : ''}>${texto}</label>`).join('');
+
+/** Iconos de linea (mismo estilo del menu). */
+const ICONOS = {
+  alerta: '<path d="M12 3l10 18H2L12 3z"/><path d="M12 10v5M12 18v.5"/>',
+  caja: '<path d="M3 8l9-5 9 5v8l-9 5-9-5V8z"/><path d="M3 8l9 5 9-5M12 13v8"/>',
+  reloj: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
+  chat: '<path d="M21 12a8.5 8.5 0 0 1-12.4 7.6L3 21l1.4-5.4A8.5 8.5 0 1 1 21 12z"/>',
+  campana: '<path d="M6 17V11a6 6 0 0 1 12 0v6l1.5 2h-15L6 17z"/><path d="M10 21h4"/>',
+  mas: '<path d="M12 5v14M5 12h14"/>',
+  whatsapp: '<path d="M21 12a8.5 8.5 0 0 1-12.4 7.6L3 21l1.4-5.4A8.5 8.5 0 1 1 21 12z"/><path d="M9 9.5c0 3 2.5 5.5 5.5 5.5l1-1.5-2-1-1 1c-1-.5-1.5-1-2-2l1-1-1-2L9 9.5z"/>',
+};
+const icono = (nombre, tam = 20) => `<svg class="icono-svg" width="${tam}" height="${tam}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONOS[nombre]}</svg>`;
+
+/** Datos del negocio (nombre para mensajes de WhatsApp). Se cargan al iniciar. */
+let negocio = { nombreNegocio: 'Vivanta Colección' };
 
 /** Llama a la API. Lanza un error con el mensaje del servidor si algo falla. */
 async function api(url, { metodo = 'GET', datos, formulario } = {}) {
@@ -55,11 +79,18 @@ function avisar(texto, tipo = '') {
   setTimeout(() => caja.remove(), tipo === 'error' ? 6000 : 3500);
 }
 
+/** Cambia cada vez que se abre otra vista (ver navegar). */
+let generacionVista = 0;
+
 /** Ejecuta una accion y muestra el error si falla. */
 async function intentar(accion) {
+  const generacion = generacionVista;
   try {
     return await accion();
   } catch (e) {
+    // Si el usuario cambio de vista mientras algo cargaba, los elementos ya no existen:
+    // ese error de pantalla no importa. Los errores del servidor si se muestran siempre.
+    if (generacion !== generacionVista && e instanceof TypeError) return;
     avisar(e.message, 'error');
   }
 }
@@ -77,18 +108,38 @@ function abrirModal(titulo, html, { grande = false } = {}) {
     if (e.target === fondo || e.target.closest('[data-cerrar]')) cerrarModal();
   });
   document.body.append(fondo);
-  const primero = $('input:not([type=hidden]), select, textarea', fondo);
+  const primero = $('input:not([type=hidden]):not([type=radio]), select, textarea', fondo);
   if (primero) primero.focus();
   return fondo;
 }
 function cerrarModal() { $('#modal')?.remove(); }
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape') cerrarModal(); });
 
+/** Ventana para pedir un motivo obligatorio (anulaciones). Devuelve el texto o null. */
+function pedirMotivo(titulo, explicacion, textoBoton, ejemplo) {
+  return new Promise((resolver) => {
+    const m = abrirModal(titulo, `
+      <form id="form-motivo">
+        <p>${explicacion}</p>
+        <label>Motivo (obligatorio) <input name="motivo" required placeholder="${esc(ejemplo)}"></label>
+      </form>
+      <div class="modal-pie"><button data-cerrar>Volver</button><button class="primario" form="form-motivo">${textoBoton}</button></div>`);
+    m.addEventListener('click', (e) => { if (e.target === m || e.target.closest('[data-cerrar]')) resolver(null); });
+    $('#form-motivo', m).addEventListener('submit', (e) => {
+      e.preventDefault();
+      const motivo = e.target.motivo.value.trim();
+      cerrarModal();
+      resolver(motivo || null);
+    });
+  });
+}
+
 /** Lee los campos de un formulario como objeto. Los campos con data-numero se convierten en numero. */
 function leerFormulario(form) {
   const datos = {};
   for (const campo of form.elements) {
     if (!campo.name) continue;
+    if (campo.type === 'radio') { if (campo.checked) datos[campo.name] = campo.value; continue; }
     if (campo.type === 'checkbox') datos[campo.name] = campo.checked;
     else if (campo.dataset.numero !== undefined) datos[campo.name] = campo.value === '' ? null : Number(campo.value);
     else datos[campo.name] = campo.value.trim() === '' ? null : campo.value.trim();
@@ -138,7 +189,7 @@ function etiquetarTablas() {
   $$('.tabla-contenedor table').forEach((tabla) => {
     const titulos = $$('thead th', tabla).map((th) => th.textContent.trim());
     $$('tbody tr', tabla).forEach((fila) => [...fila.children].forEach((celda, i) => {
-      if (titulos[i] && !celda.hasAttribute('colspan')) celda.dataset.label = titulos[i];
+      if (titulos[i] && i > 0 && !celda.hasAttribute('colspan')) celda.dataset.label = titulos[i];
     }));
   });
 }
@@ -146,23 +197,33 @@ new MutationObserver(etiquetarTablas).observe(document.body, { childList: true, 
 
 // ---------- Navegacion ----------
 
-const vistas = { panel, ventas, pedidos, productos, compras, inventario, clientes, configuracion };
+const vistas = {
+  panel, ventas, 'nueva-venta': nuevaVenta, pedidos, inventario, compras, clientes, configuracion,
+  productos: inventario, // la antigua seccion "Productos" ahora es parte de Inventario
+};
+/** Opcion del menu que se marca para cada vista. */
+const MENU_DE = { 'nueva-venta': 'ventas', productos: 'inventario' };
 
-/** Accion pedida desde el panel ("+ Nueva venta", "+ Compra") para abrirla al llegar a la vista. */
-let accionPendiente = null;
-function tomarAccion(nombre) {
-  const coincide = accionPendiente === nombre;
-  if (coincide) accionPendiente = null;
-  return coincide;
-}
+let vistaActual = null;
+/** Si una vista tiene trabajo sin guardar (venta a medias), devuelve true para preguntar antes de salir. */
+let hayCambiosSinGuardar = null;
 
 async function navegar() {
   const nombre = location.hash.slice(1) || 'panel';
+  if (hayCambiosSinGuardar?.() && nombre !== vistaActual
+      && !confirm('Tienes una venta sin terminar. ¿Salir y descartarla?')) {
+    history.replaceState(null, '', '#' + vistaActual);
+    return;
+  }
+  hayCambiosSinGuardar = null;
+  vistaActual = nombre;
+  generacionVista++;
   const dibujar = vistas[nombre] || panel;
-  $$('#menu a').forEach((a) => a.classList.toggle('activo', a.dataset.vista === nombre));
+  $$('#menu a').forEach((a) => a.classList.toggle('activo', a.dataset.vista === (MENU_DE[nombre] || nombre)));
   $('#app').classList.remove('menu-abierto');
   cerrarModal();
   vista().innerHTML = '<p class="suave">Cargando…</p>';
+  window.scrollTo(0, 0);
   await intentar(dibujar);
   actualizarContadorPedidos();
 }
@@ -234,125 +295,210 @@ $('#tema').addEventListener('click', () => {
 // PANEL PRINCIPAL
 // =====================================================================
 
+const ALERTA_ESTILO = {
+  stock: ['alerta', '', 'bajo'], agotado: ['caja', 'rosa', 'agotado'], 'por-vencer': ['reloj', '', 'bajo'],
+  vencido: ['reloj', 'rosa', 'peligro'], pedido: ['chat', 'rosa', 'numero'],
+};
+
 async function panel() {
   const d = await api('/api/panel');
+  const hoy = new Date();
+  const mes = hoy.toLocaleDateString('es-CO', { month: 'long' });
   const pasos = [
     [d.whatsappConfigurado, 'Configura el WhatsApp y los datos del negocio', 'configuracion'],
-    [d.productosActivos > 0, 'Crea tus productos (con foto)', 'productos'],
-    [d.unidadesInventario > 0, 'Registra una compra para cargar existencias', 'compras'],
+    [d.productosActivos > 0, 'Crea tus productos (con foto)', 'inventario'],
+    [d.unidadesInventario > 0, 'Registra una entrada de mercancía para cargar existencias', 'compras'],
   ];
   const guia = pasos.every(([listo]) => listo) ? '' : `
-    <section class="tarjeta" style="margin-bottom:1.4em;border-left:4px solid var(--principal)">
+    <section class="tarjeta" style="border-left:4px solid var(--principal)">
       <h2>Primeros pasos</h2>
-      <ol style="margin:0;padding-left:1.3em;display:flex;flex-direction:column;gap:.4em">
-        ${pasos.map(([listo, texto, destino]) => `<li>${listo ? `✅ <s class="suave">${texto}</s>` : `<a href="#${destino}">${texto}</a>`}</li>`).join('')}
+      <ol style="margin:0;padding-left:1.3em;display:flex;flex-direction:column;gap:.5em">
+        ${pasos.map(([listo, texto, destino]) => `<li>${listo ? `✓ <s class="suave">${texto}</s>` : `<a href="#${destino}">${texto}</a>`}</li>`).join('')}
         <li>Comparte tu catálogo desde <a href="#configuracion">Configuración</a> (enlace, QR o WhatsApp).</li>
       </ol>
     </section>`;
+  const meta = (titulo, valor, objetivo, etiqueta) => {
+    const avance = objetivo ? Math.min(100, Math.round(valor * 100 / objetivo)) : 0;
+    return `<div class="meta">
+      <div class="encabezado"><strong>${titulo}</strong><span class="suave">${cop(valor)} de ${cop(objetivo)}</span></div>
+      <div class="progreso" role="progressbar" aria-label="${etiqueta}" aria-valuenow="${avance}" aria-valuemin="0" aria-valuemax="100"><div style="width:${avance}%"></div></div>
+      <div class="suave" style="margin-top:8px;font-size:13px">${avance} % de la meta mensual</div>
+    </div>`;
+  };
+  const tieneMetas = d.metaVentasMes > 0 || d.metaUtilidadMes > 0;
+
   vista().innerHTML = `
-    <div class="cabecera"><h1>Panel</h1>
-      <a class="boton" href="#compras" data-accion="nueva-compra">+ Compra</a>
-      <a class="boton primario" href="#ventas" data-accion="nueva-venta">+ Nueva venta</a></div>
-    ${guia}
-    <div class="indicadores">
-      <div class="tarjeta indicador destacado"><div class="titulo">Ventas de hoy</div><div class="valor">${cop(d.ventasHoy)}</div><div class="detalle">${d.numeroVentasHoy} venta(s)</div></div>
-      <div class="tarjeta indicador"><div class="titulo">Utilidad estimada hoy</div><div class="valor">${cop(d.utilidadHoy)}</div><div class="detalle">Según costo real (PEPS)</div></div>
-      <div class="tarjeta indicador"><div class="titulo">Cuentas por cobrar</div><div class="valor">${cop(d.cuentasPorCobrar)}</div><div class="detalle">Por pagar: ${cop(d.cuentasPorPagar)}</div></div>
-      <div class="tarjeta indicador"><div class="titulo">Inventario actual</div><div class="valor">${d.unidadesInventario.toLocaleString('es-CO')} und</div><div class="detalle">Valor al costo: ${cop(d.valorInventario)}</div></div>
-    </div>
-    <div class="indicadores">
-      <div class="tarjeta indicador"><div class="titulo">Ventas del mes</div><div class="valor">${cop(d.ventasMes)}</div></div>
-      <div class="tarjeta indicador"><div class="titulo">Utilidad del mes</div><div class="valor">${cop(d.utilidadMes)}</div></div>
-      <div class="tarjeta indicador"><div class="titulo">Pedidos por confirmar</div><div class="valor">${d.pedidosPendientes}</div><div class="detalle"><a href="#pedidos">Ver pedidos</a></div></div>
-    </div>
-    <section class="tarjeta">
-      <h2>Alertas</h2>
-      <div class="alertas">
-        ${d.alertas.length ? d.alertas.map((a) => `<a class="alerta ${a.tipo}" href="#${a.vista}">${esc(a.mensaje)}</a>`).join('') : '<p class="suave">Todo en orden. No hay alertas.</p>'}
+    <header class="cabecera">
+      <div>
+        <h1>Panel principal</h1>
+        <p class="sub">${hoy.toLocaleDateString('es-CO', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }).replace(/^./, (l) => l.toUpperCase())}</p>
       </div>
-    </section>`;
-  $$('[data-accion]').forEach((a) => a.addEventListener('click', () => { accionPendiente = a.dataset.accion; }));
+      <div class="acciones">
+        <button type="button" class="boton-campana" id="ir-alertas" aria-label="Ver alertas">${icono('campana')}${d.alertas.length ? '<span class="punto"></span>' : ''}</button>
+        <a class="boton" href="#compras">Entrada de mercancía</a>
+        <a class="boton primario" href="#nueva-venta">${icono('mas', 18)}Nueva venta</a>
+      </div>
+    </header>
+    ${guia}
+    <section class="indicadores" aria-label="Resumen del día">
+      <div class="indicador rosa"><span class="titulo">Ventas del día</span><span class="valor">${cop(d.ventasHoy)}</span><span class="detalle">${d.numeroVentasHoy} venta(s) registradas hoy</span></div>
+      <div class="indicador amarillo"><span class="titulo">Utilidad estimada del día</span><span class="valor">${cop(d.utilidadHoy)}</span><span class="detalle">Calculada con costo PEPS</span></div>
+      <div class="indicador"><span class="titulo">Cuentas por cobrar</span><span class="valor">${cop(d.cuentasPorCobrar)}</span><span class="detalle">${d.clientesConSaldo} cliente(s) con saldo pendiente</span></div>
+      <div class="indicador"><span class="titulo">Inventario actual</span><span class="valor">${d.unidadesInventario.toLocaleString('es-CO')} und.</span><span class="detalle">en ${d.productosActivos} productos activos</span></div>
+    </section>
+    <div class="dos-columnas">
+      <section class="tarjeta estrecha">
+        <h2>Metas de ${mes}</h2>
+        ${tieneMetas
+          ? (d.metaVentasMes ? meta('Ventas del mes', d.ventasMes, d.metaVentasMes, 'Avance de la meta de ventas') : '')
+            + (d.metaUtilidadMes ? meta('Utilidad del mes', d.utilidadMes, d.metaUtilidadMes, 'Avance de la meta de utilidad') : '')
+          : `<p class="suave">Ventas del mes: <strong>${cop(d.ventasMes)}</strong> · Utilidad: <strong>${cop(d.utilidadMes)}</strong></p>
+             <p><a href="#configuracion">Define tus metas mensuales</a> para ver aquí el avance.</p>`}
+        <p class="suave" style="margin:20px 0 0;font-size:13px">Por pagar a proveedores: ${cop(d.cuentasPorPagar)} · Valor del inventario al costo: ${cop(d.valorInventario)}</p>
+      </section>
+      <section class="tarjeta ancha" id="alertas" style="padding-bottom:12px">
+        <h2 style="margin-bottom:8px">Alertas</h2>
+        ${d.alertas.length ? `<ul class="lista-alertas">${d.alertas.map((a) => {
+          const [ic, tono, etiqueta] = ALERTA_ESTILO[a.tipo] || ALERTA_ESTILO.stock;
+          return `<li><a href="#${a.vista}"><span class="tile ${tono}">${icono(ic)}</span>
+            <span class="texto"><strong>${esc(a.titulo)}</strong><span>${esc(a.detalle)}</span></span>
+            <span class="etiqueta ${etiqueta}">${esc(a.etiqueta)}</span></a></li>`;
+        }).join('')}</ul>` : '<p class="suave">Todo en orden. No hay alertas.</p>'}
+      </section>
+    </div>`;
+  $('#ir-alertas').addEventListener('click', () => $('#alertas').scrollIntoView({ behavior: 'smooth' }));
 }
 
 // =====================================================================
-// PRODUCTOS
+// INVENTARIO (productos, existencias, lotes y movimientos)
 // =====================================================================
 
 let categoriasCache = [];
 
-async function productos() {
-  categoriasCache = await api('/api/categorias');
-  vista().innerHTML = `
-    <div class="cabecera"><h1>Productos</h1>
-      <button type="button" id="btn-categorias">Categorías</button>
-      <button type="button" class="primario" id="btn-nuevo">+ Nuevo producto</button></div>
-    <div class="barra">
-      <input type="search" id="buscar" placeholder="Buscar por nombre, código, marca o categoría">
-      <select id="filtro-categoria"><option value="">Todas las categorías</option>${categoriasCache.map((c) => `<option value="${c.id}">${esc(c.nombre)}</option>`).join('')}</select>
-      <select id="filtro-estado">
-        <option value="activos">Activos</option><option value="agotados">Agotados</option>
-        <option value="bajo">Stock bajo</option><option value="inactivos">Desactivados</option><option value="todos">Todos</option>
-      </select>
-    </div>
-    <div id="lista"></div>`;
-  const cargar = () => intentar(async () => {
-    const params = new URLSearchParams({ q: $('#buscar').value });
-    if ($('#filtro-categoria').value) params.set('categoriaId', $('#filtro-categoria').value);
-    const estado = $('#filtro-estado').value;
-    let lista = await api('/api/productos?' + params);
-    lista = lista.filter((p) => ({
-      activos: p.activo, agotados: p.activo && p.existencias === 0, bajo: p.activo && p.stockBajo,
-      inactivos: !p.activo, todos: true,
-    }[estado]));
-    dibujarProductos(lista, cargar);
-  });
-  let espera;
-  $('#buscar').addEventListener('input', () => { clearTimeout(espera); espera = setTimeout(cargar, 250); });
-  $('#filtro-categoria').addEventListener('change', cargar);
-  $('#filtro-estado').addEventListener('change', cargar);
-  $('#btn-nuevo').addEventListener('click', () => formularioProducto(null, cargar));
-  $('#btn-categorias').addEventListener('click', () => gestionarCategorias(productos));
-  await cargar();
-}
-
-function etiquetaStock(p) {
+function estadoProducto(p) {
   if (!p.activo) return '<span class="etiqueta neutra">Desactivado</span>';
   if (p.existencias === 0) return '<span class="etiqueta agotado">Agotado</span>';
-  if (p.stockBajo) return `<span class="etiqueta bajo">${p.existencias} · bajo</span>`;
-  return `<span class="etiqueta ok">${p.existencias}</span>`;
+  if (p.stockBajo) return '<span class="etiqueta bajo">Stock bajo</span>';
+  return '<span class="etiqueta ok">Disponible</span>';
 }
 
-function dibujarProductos(lista, recargar) {
-  if (!lista.length) {
-    $('#lista').innerHTML = '<div class="tarjeta vacio">No hay productos con ese filtro. Crea uno con «+ Nuevo producto».</div>';
-    return;
-  }
-  $('#lista').innerHTML = `<div class="tabla-contenedor"><table>
-    <thead><tr><th></th><th>Código</th><th>Producto</th><th>Categoría</th><th class="num">Costo</th><th class="num">Precio</th><th>Existencias</th><th></th></tr></thead>
-    <tbody>${lista.map((p) => `<tr class="${p.activo ? '' : 'inactivo'}">
-      <td><button type="button" class="foto-boton" data-imagenes="${p.id}" title="Ver o agregar fotos" aria-label="Fotos de ${esc(p.nombre)}">
-        ${p.imagenes.length ? `<img class="miniatura" src="/api/public/imagenes/${p.imagenes[0]}" alt="">` : '<span class="miniatura sin-foto">📷+</span>'}</button></td>
-      <td>${esc(p.codigo)}</td>
-      <td><strong>${esc(p.nombre)}</strong><br><span class="suave">${esc(p.marca)}</span></td>
-      <td>${esc(p.categoriaNombre || '—')}</td>
-      <td class="num">${cop(p.costo)}</td>
-      <td class="num">${cop(p.precioVenta)}${p.precioVenta !== p.precioSugerido ? `<br><span class="suave" title="Precio sugerido">sug. ${cop(p.precioSugerido)}</span>` : ''}</td>
-      <td>${etiquetaStock(p)}${p.reservado ? ` <span class="etiqueta neutra" title="Reservado por pedidos">${p.reservado} res.</span>` : ''}</td>
-      <td class="fila fin">
-        <button class="pequeno" data-editar="${p.id}">Editar</button>
-        <button class="pequeno" data-imagenes="${p.id}">📷 Fotos</button>
-        <button class="pequeno" data-historial="${p.id}">Historial de precios</button>
-        <button class="pequeno ${p.activo ? 'peligro' : ''}" data-activo="${p.id}" data-valor="${!p.activo}">${p.activo ? 'Desactivar' : 'Activar'}</button>
-      </td></tr>`).join('')}</tbody></table></div>`;
-  const porId = (id) => lista.find((p) => p.id === Number(id));
-  $$('[data-editar]').forEach((b) => b.addEventListener('click', () => formularioProducto(porId(b.dataset.editar), recargar)));
-  $$('[data-imagenes]').forEach((b) => b.addEventListener('click', () => gestionarImagenes(b.dataset.imagenes, recargar)));
-  $$('[data-historial]').forEach((b) => b.addEventListener('click', () => historialPrecios(porId(b.dataset.historial))));
-  $$('[data-activo]').forEach((b) => b.addEventListener('click', () => intentar(async () => {
-    await api(`/api/productos/${b.dataset.activo}/activo`, { metodo: 'PUT', datos: { activo: b.dataset.valor === 'true' } });
-    avisar(b.dataset.valor === 'true' ? 'Producto activado' : 'Producto desactivado (su historial se conserva)');
-    recargar();
-  })));
+async function inventario() {
+  categoriasCache = await api('/api/categorias');
+  vista().innerHTML = `
+    <header class="cabecera">
+      <div><h1>Inventario</h1><p class="sub">Existencias por producto y por lote</p></div>
+      <div class="acciones">
+        <button type="button" id="btn-categorias">Categorías</button>
+        <button type="button" class="contorno" id="btn-nuevo">${icono('mas', 18)}Nuevo producto</button>
+        <a class="boton primario" href="#compras">Registrar compra</a>
+      </div>
+    </header>
+    <div class="pestanas" role="tablist"><button class="activo" data-pestana="productos">Productos</button><button data-pestana="movimientos">Movimientos</button></div>
+    <div id="contenido-inventario" style="display:flex;flex-direction:column;gap:20px"></div>`;
+  $('#btn-nuevo').addEventListener('click', () => formularioProducto(null, inventario));
+  $('#btn-categorias').addEventListener('click', () => gestionarCategorias(inventario));
+  $$('[data-pestana]').forEach((b) => b.addEventListener('click', () => {
+    $$('[data-pestana]').forEach((x) => x.classList.toggle('activo', x === b));
+    intentar(b.dataset.pestana === 'productos' ? listaProductos : movimientos);
+  }));
+  await listaProductos();
+}
+
+async function listaProductos() {
+  const todos = await api('/api/productos');
+  let filtro = 'activos';
+  let seleccionado = null;
+  $('#contenido-inventario').innerHTML = `
+    <div class="barra">
+      <label style="flex:1 1 280px;max-width:420px">Buscar por nombre, código, categoría o marca
+        <input id="buscar-inv" type="search" placeholder="Buscar producto"></label>
+      <label>Categoría <select id="filtro-categoria"><option value="">Todas</option>${categoriasCache.map((c) => `<option value="${c.id}">${esc(c.nombre)}</option>`).join('')}</select></label>
+      <div class="chips" role="group" aria-label="Filtrar por estado">
+        <button type="button" class="chip" data-filtro="activos" aria-pressed="true">Todos</button>
+        <button type="button" class="chip" data-filtro="bajo" aria-pressed="false">Stock bajo</button>
+        <button type="button" class="chip" data-filtro="agotados" aria-pressed="false">Agotados</button>
+        <button type="button" class="chip" data-filtro="inactivos" aria-pressed="false">Desactivados</button>
+      </div>
+    </div>
+    <section id="tabla-productos"></section>
+    <section id="detalle-producto"></section>`;
+
+  const dibujar = () => {
+    const texto = normalizar($('#buscar-inv').value);
+    const categoria = Number($('#filtro-categoria').value) || null;
+    const lista = todos.filter((p) => ({
+      activos: p.activo, bajo: p.activo && p.stockBajo && p.existencias > 0, agotados: p.activo && p.existencias === 0, inactivos: !p.activo,
+    }[filtro])
+      && (!categoria || p.categoriaId === categoria)
+      && (!texto || normalizar(`${p.nombre} ${p.codigo} ${p.marca} ${p.categoriaNombre || ''}`).includes(texto)));
+    const activos = todos.filter((p) => p.activo).length;
+    $('#tabla-productos').innerHTML = lista.length ? `
+      <div class="tabla-contenedor"><table>
+        <caption class="suave" style="text-align:left;padding:10px 14px">Toca un producto para ver sus lotes y opciones</caption>
+        <thead><tr><th>Producto</th><th>Marca</th><th>Categoría</th><th class="num">Existencia</th><th class="num">Mínimo</th><th class="num">Costo vigente</th><th class="num">Precio</th><th>Estado</th></tr></thead>
+        <tbody>${lista.map((p) => `<tr class="seleccionable ${p.activo ? '' : 'inactivo'} ${p.id === seleccionado ? 'seleccionada' : ''}" data-id="${p.id}" tabindex="0">
+          <td><div class="producto-celda"><img class="miniatura" src="${fotoProducto(p)}" alt=""><div><strong>${esc(p.nombre)}</strong><span>${esc(p.codigo)}</span></div></div></td>
+          <td>${esc(p.marca)}</td><td>${esc(p.categoriaNombre || '—')}</td>
+          <td class="num">${p.existencias}${p.reservado ? ` <span class="suave" title="Reservadas por pedidos">(${p.reservado} res.)</span>` : ''}</td>
+          <td class="num">${p.stockMinimo}</td><td class="num">${cop(p.costo)}</td><td class="num">${cop(p.precioVenta)}</td>
+          <td>${estadoProducto(p)}</td></tr>`).join('')}</tbody>
+      </table><div class="pie-tabla">Mostrando ${lista.length} de ${activos} productos activos</div></div>`
+      : `<div class="tarjeta vacio">${todos.length ? 'No hay productos con ese filtro.' : 'Aún no tienes productos. Crea el primero con «Nuevo producto».'}</div>`;
+    $$('#tabla-productos tr[data-id]').forEach((fila) => {
+      const abrir = () => { seleccionado = Number(fila.dataset.id); dibujar(); intentar(() => detalleProducto(todos.find((p) => p.id === seleccionado))); };
+      fila.addEventListener('click', abrir);
+      fila.addEventListener('keydown', (e) => { if (e.key === 'Enter') abrir(); });
+    });
+  };
+
+  let espera;
+  $('#buscar-inv').addEventListener('input', () => { clearTimeout(espera); espera = setTimeout(dibujar, 150); });
+  $('#filtro-categoria').addEventListener('change', dibujar);
+  $$('[data-filtro]').forEach((b) => b.addEventListener('click', () => {
+    filtro = b.dataset.filtro;
+    $$('[data-filtro]').forEach((x) => x.setAttribute('aria-pressed', String(x === b)));
+    dibujar();
+  }));
+  dibujar();
+}
+
+/** Lotes y acciones del producto elegido (debajo de la tabla, como en el diseno). */
+async function detalleProducto(p) {
+  const lotes = await api(`/api/inventario/${p.id}/lotes`);
+  const recargar = inventario;
+  $('#detalle-producto').innerHTML = `
+    <div class="tarjeta" style="display:flex;flex-direction:column;gap:16px">
+      <div class="fila" style="justify-content:space-between">
+        <h2 style="margin:0">Lotes de ${esc(p.nombre)}</h2>
+        <span class="suave">Total disponible: <strong>${p.disponible}</strong> unidad(es)${p.reservado ? ` · ${p.reservado} reservada(s)` : ''}</span>
+      </div>
+      <div class="acciones-producto">
+        <button type="button" class="pequeno" data-accion="editar">Editar producto</button>
+        <button type="button" class="pequeno" data-accion="fotos">Fotos (${p.imagenes.length})</button>
+        <button type="button" class="pequeno" data-accion="ajustar">Ajustar existencias</button>
+        <button type="button" class="pequeno" data-accion="historial">Historial de precios</button>
+        <button type="button" class="pequeno ${p.activo ? 'peligro' : ''}" data-accion="activo">${p.activo ? 'Desactivar' : 'Activar'}</button>
+      </div>
+      <p class="suave" style="margin:0">Las ventas descuentan primero del lote más antiguo (PEPS).${p.precioVenta !== p.precioSugerido ? ` Precio sugerido con el costo actual: ${cop(p.precioSugerido)}.` : ''}</p>
+      <div class="tabla-contenedor"><table>
+        <thead><tr><th>Fecha de entrada</th><th>Origen</th><th class="num">Entró</th><th class="num">Quedan</th><th class="num">Costo unitario</th></tr></thead>
+        <tbody>${lotes.map((l) => `<tr class="${l.cantidadDisponible ? '' : 'inactivo'}"><td>${fechaCorta(l.fecha)}</td><td>${esc(l.origen)}</td><td class="num">${l.cantidadInicial}</td><td class="num">${l.cantidadDisponible}</td><td class="num">${cop(l.costoUnitario)}</td></tr>`).join('')
+          || '<tr><td colspan="5" class="vacio">Sin lotes todavía. Registra una entrada de mercancía.</td></tr>'}</tbody>
+      </table></div>
+    </div>`;
+  const acciones = {
+    editar: () => formularioProducto(p, recargar),
+    fotos: () => gestionarImagenes(p.id, recargar),
+    ajustar: () => ajustarInventario(p, recargar),
+    historial: () => historialPrecios(p),
+    activo: () => intentar(async () => {
+      await api(`/api/productos/${p.id}/activo`, { metodo: 'PUT', datos: { activo: !p.activo } });
+      avisar(p.activo ? 'Producto desactivado (su historial se conserva)' : 'Producto activado');
+      recargar();
+    }),
+  };
+  $$('#detalle-producto [data-accion]').forEach((b) => b.addEventListener('click', acciones[b.dataset.accion]));
+  $('#detalle-producto').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
 
 function formularioProducto(p, recargar) {
@@ -367,9 +513,9 @@ function formularioProducto(p, recargar) {
       <div class="ancho fila"><span class="suave" id="sugerido"></span><button type="button" class="pequeno" id="usar-sugerido">Usar precio sugerido</button></div>
       <label>Stock mínimo <input name="stockMinimo" type="number" min="0" step="1" data-numero value="${p?.stockMinimo ?? 0}"></label>
       <label class="ancho">Descripción <textarea name="descripcion">${esc(p?.descripcion)}</textarea></label>
-      <label class="ancho">📷 Fotos ${p?.imagenes.length ? `(ya tiene ${p.imagenes.length}; las nuevas se agregan)` : '(desde el celular puedes tomarla con la cámara)'}
+      <label class="ancho">Fotos ${p?.imagenes.length ? `(ya tiene ${p.imagenes.length}; las nuevas se agregan)` : '(desde el celular puedes tomarla con la cámara)'}
         <input type="file" id="fotos-producto" accept="image/*" multiple></label>
-      ${p ? '' : '<p class="ancho suave">Las existencias se cargan registrando una <strong>Compra</strong> (o un ajuste de inventario).</p>'}
+      ${p ? '' : '<p class="ancho suave">Las existencias se cargan registrando una <strong>Entrada de mercancía</strong> (o un ajuste de inventario).</p>'}
     </form>
     <div class="modal-pie"><button data-cerrar>Cancelar</button><button class="primario" form="form-producto">Guardar</button></div>`);
   const form = $('#form-producto', m);
@@ -436,8 +582,8 @@ async function gestionarImagenes(id, recargar) {
   const m = abrirModal('Fotos · ' + esc(p.nombre), `
     <p class="suave">La primera foto (★) es la principal y se muestra en el catálogo. Desde el celular puedes tomar la foto directamente.</p>
     <div class="galeria">${p.imagenes.map((img, i) => `<figure><img src="/api/public/imagenes/${img}" alt="">
-      <figcaption>${i === 0 ? '<span class="etiqueta">★ Principal</span>' : `<button class="pequeno" data-principal="${img}">★</button>`}
-      <button class="pequeno peligro" data-borrar="${img}" aria-label="Eliminar">🗑</button></figcaption></figure>`).join('')}</div>
+      <figcaption>${i === 0 ? '<span class="etiqueta">★ Principal</span>' : `<button class="pequeno" data-principal="${img}">★ Principal</button>`}
+      <button class="pequeno peligro" data-borrar="${img}">Eliminar</button></figcaption></figure>`).join('')}</div>
     <form id="form-img" class="fila" style="margin-top:1em"><input type="file" name="archivos" accept="image/*" multiple required style="flex:1"><button class="primario">Subir</button></form>
     <div class="modal-pie"><button data-cerrar>Listo</button></div>`);
   m.addEventListener('click', (e) => { if (e.target.closest('[data-cerrar]')) recargar(); });
@@ -470,33 +616,41 @@ async function historialPrecios(p) {
     </tbody></table></div><div class="modal-pie"><button data-cerrar>Cerrar</button></div>`);
 }
 
-// =====================================================================
-// COMPRAS (entrada de mercancia)
-// =====================================================================
-
-async function compras() {
-  vista().innerHTML = `
-    <div class="cabecera"><h1>Compras</h1><button class="primario" id="btn-compra">+ Registrar compra</button></div>
-    <div class="barra"><label class="check"><input type="checkbox" id="solo-pendientes"> Solo con saldo pendiente (cuentas por pagar)</label></div>
-    <div id="lista"></div>`;
-  const cargar = () => intentar(async () => {
-    const lista = await api('/api/compras?pendientes=' + $('#solo-pendientes').checked);
-    $('#lista').innerHTML = lista.length ? `<div class="tabla-contenedor"><table>
-      <thead><tr><th>Número</th><th>Fecha</th><th>Proveedor</th><th class="num">Total</th><th class="num">Pagado</th><th class="num">Saldo</th><th>Vence</th><th></th></tr></thead>
-      <tbody>${lista.map((c) => `<tr class="${c.anulada ? 'inactivo' : ''}">
-        <td><strong>${c.numero}</strong></td><td>${fecha(c.fecha + 'T00:00')}</td><td>${esc(c.proveedor || '—')}</td>
-        <td class="num">${cop(c.total)}</td><td class="num">${cop(c.pagado)}</td>
-        <td class="num">${c.anulada ? '<span class="etiqueta peligro">Anulada</span>' : c.saldo ? `<span class="etiqueta aviso">${cop(c.saldo)}</span>` : '<span class="etiqueta ok">Pagada</span>'}</td>
-        <td>${c.fechaVencimiento ? etiquetaVencimiento(c.fechaVencimiento, c.saldo) : '—'}</td>
-        <td class="num"><button class="pequeno" data-ver="${c.id}">Ver</button></td></tr>`).join('')}</tbody></table></div>`
-      : '<div class="tarjeta vacio">No hay compras registradas.</div>';
-    $$('[data-ver]').forEach((b) => b.addEventListener('click', () => verCompra(b.dataset.ver, cargar)));
+function ajustarInventario(p, recargar) {
+  const m = abrirModal('Ajuste de existencias · ' + esc(p.nombre), `
+    <form id="form-ajuste" class="campos">
+      <fieldset class="opciones parejo ancho"><legend>Tipo de ajuste</legend>${pastillas('tipo', [['1', 'Entrada (sumar)'], ['-1', 'Salida (restar)']], '1')}</fieldset>
+      <label>Cantidad <input type="number" name="cantidad" min="1" required></label>
+      <label class="ancho">Motivo (opcional) <input name="motivo" placeholder="Conteo físico, regalo, daño…"></label>
+      <p class="ancho suave">Existencias actuales: ${p.existencias}. Las entradas usan el costo vigente (${cop(p.costo)}); las salidas descuentan por PEPS.</p>
+    </form>
+    <div class="modal-pie"><button data-cerrar>Cancelar</button><button class="primario" form="form-ajuste">Guardar ajuste</button></div>`);
+  $('#form-ajuste', m).addEventListener('submit', (e) => {
+    e.preventDefault();
+    const f = e.target;
+    intentar(async () => {
+      await api('/api/inventario/ajustes', { metodo: 'POST', datos: { productoId: p.id, cantidad: Number(f.cantidad.value) * Number(f.tipo.value), motivo: f.motivo.value } });
+      cerrarModal();
+      avisar('Ajuste registrado');
+      recargar();
+    });
   });
-  $('#solo-pendientes').addEventListener('change', cargar);
-  $('#btn-compra').addEventListener('click', () => nuevaCompra(cargar));
-  await cargar();
-  if (tomarAccion('nueva-compra')) nuevaCompra(cargar);
 }
+
+const TIPOS_MOV = { COMPRA: 'Compra', VENTA: 'Venta', AJUSTE_ENTRADA: 'Ajuste +', AJUSTE_SALIDA: 'Ajuste −', ANULACION_VENTA: 'Anulación venta', ANULACION_COMPRA: 'Anulación compra' };
+
+async function movimientos() {
+  const lista = await api('/api/inventario/movimientos');
+  $('#contenido-inventario').innerHTML = `<p class="suave" style="margin:0">Últimos 200 movimientos.</p><div class="tabla-contenedor"><table>
+    <thead><tr><th>Fecha</th><th>Producto</th><th>Tipo</th><th class="num">Cantidad</th><th>Documento</th><th>Motivo</th></tr></thead>
+    <tbody>${lista.map((m) => `<tr><td>${fechaHora(m.fecha)}</td><td>${esc(m.productoNombre)}</td><td>${TIPOS_MOV[m.tipo]}</td>
+      <td class="num"><span class="etiqueta ${m.cantidad > 0 ? 'ok' : 'neutra'}">${m.cantidad > 0 ? '+' : ''}${m.cantidad}</span></td>
+      <td>${esc(m.referencia || '')}</td><td>${esc(m.motivo || '')}</td></tr>`).join('') || '<tr><td colspan="6" class="vacio">Sin movimientos</td></tr>'}</tbody></table></div>`;
+}
+
+// =====================================================================
+// ENTRADA DE MERCANCIA (compras)
+// =====================================================================
 
 function etiquetaVencimiento(fechaIso, saldo) {
   const hoy = hoyISO();
@@ -504,66 +658,110 @@ function etiquetaVencimiento(fechaIso, saldo) {
   const texto = fecha(fechaIso + 'T00:00');
   if (!saldo) return texto;
   if (fechaIso < hoy) return `<span class="etiqueta peligro">Vencida ${texto}</span>`;
-  if (fechaIso <= tres) return `<span class="etiqueta aviso">${texto}</span>`;
+  if (fechaIso <= tres) return `<span class="etiqueta bajo">${texto}</span>`;
   return texto;
 }
 
-/**
- * Formulario de compra. Si se pasa "base" (una compra anulada), el formulario
- * aparece lleno con sus datos para corregir solo lo que estaba mal.
- */
-async function nuevaCompra(recargar, base = null) {
-  const lista = (await api('/api/productos?soloActivos=true'));
-  if (!lista.length) {
-    avisar('Primero crea productos en la sección Productos.', 'error');
-    return;
-  }
-  const opciones = lista.map((p) => `<option value="${p.id}" data-costo="${p.costo}">${esc(p.codigo)} · ${esc(p.nombre)} (${esc(p.marca)})</option>`).join('');
-  const m = abrirModal(base ? 'Corregir compra ' + base.numero : 'Registrar compra', `
-    <form id="form-compra">
-      ${base ? `<p class="tarjeta" style="background:var(--aviso-fondo)">La compra ${base.numero} quedó anulada. Corrige lo que estaba mal y guarda: se registrará como una compra nueva.
-        ${base.pagado ? `Ya le habías pagado ${cop(base.pagado)} al proveedor; ese valor aparece abajo como pagado.` : ''}</p>` : ''}
-      <div class="campos">
-        <label>Fecha <input type="date" name="fecha" value="${base ? base.fecha : hoyISO()}"></label>
-        <label>Proveedor (opcional) <input name="proveedor" placeholder="Texto libre" value="${esc(base?.proveedor)}"></label>
-      </div>
-      <h3 style="margin-top:1.2em">Productos</h3>
-      <div id="lineas"></div>
-      <button type="button" class="pequeno" id="agregar-linea">+ Agregar producto</button>
-      <div class="campos" style="margin-top:1.2em">
-        <label>Costos adicionales (transporte…) <input type="number" min="0" name="costosAdicionales" value="0" data-numero></label>
-        <label>Nota de costos adicionales <input name="notaCostosAdicionales"></label>
-      </div>
-      <p class="suave">Los costos adicionales se guardan aparte y no se reparten entre los productos.</p>
-      <div class="totales"><span>Total productos</span><span class="grande" id="total-compra">$0</span></div>
-      <h3 style="margin-top:1em">Pago al proveedor</h3>
-      <div class="campos">
-        <label>Valor pagado ahora <input type="number" min="0" name="montoPagado" value="0" data-numero></label>
-        <label>Método <select name="metodoPago">${opcionesMetodo('EFECTIVO')}</select></label>
-        <label>Vence (si queda saldo) <input type="date" name="fechaVencimiento"></label>
-      </div>
-      <div class="fila" style="margin-top:.6em"><button type="button" class="pequeno" id="pago-total">Pagó todo</button>
-        <label class="check"><input type="checkbox" name="actualizarPrecios"> Actualizar el precio de venta al sugerido con el nuevo costo</label></div>
-    </form>
-    <div class="modal-pie"><button data-cerrar>Cancelar</button><button class="primario" form="form-compra">Guardar compra</button></div>`, { grande: true });
+function estadoCompra(c) {
+  if (c.anulada) return '<span class="etiqueta neutra">Anulada</span>';
+  if (!c.saldo) return '<span class="etiqueta ok">Pagada</span>';
+  if (c.fechaVencimiento && c.fechaVencimiento < hoyISO()) return '<span class="etiqueta peligro">Vencido</span>';
+  return '<span class="etiqueta bajo">Saldo pendiente</span>';
+}
 
-  const lineas = $('#lineas', m);
+/** Compra anulada con "Corregir": su contenido llena el formulario al abrir la vista. */
+let compraParaCorregir = null;
+
+async function compras() {
+  const [productosLista, numero] = await Promise.all([api('/api/productos?soloActivos=true'), api('/api/consecutivos/C')]);
+  const base = compraParaCorregir;
+  compraParaCorregir = null;
+  vista().innerHTML = `
+    <header class="cabecera">
+      <div class="titulo-numero"><h1>Entrada de mercancía</h1><span class="etiqueta numero">${numero.numero}</span></div>
+    </header>
+    <div class="pagina-doble">
+      <section class="tarjeta principal">
+        ${productosLista.length ? '' : '<div class="aviso-caja">Primero crea tus productos en <a href="#inventario">Inventario</a>; luego registra aquí lo que llega.</div>'}
+        ${base ? `<div class="aviso-caja">La compra ${base.numero} quedó anulada. Corrige lo que estaba mal y registra: quedará como compra nueva.
+          ${base.pagado ? ` Ya le habías pagado ${cop(base.pagado)} al proveedor; ese valor aparece como pagado.` : ''}</div>` : ''}
+        <form id="form-compra" style="display:flex;flex-direction:column;gap:20px">
+          <div class="campos">
+            <label>Fecha <input type="date" name="fecha" value="${base ? base.fecha : hoyISO()}"></label>
+            <label>Proveedor (opcional, texto libre) <input name="proveedor" value="${esc(base?.proveedor)}" placeholder="Ej. Distribuidora Andina"></label>
+          </div>
+          <div>
+            <h2 style="font-size:1.5rem">Productos recibidos</h2>
+            <div class="lineas-compra" id="lineas"></div>
+            <button type="button" class="contorno" id="agregar-linea" style="margin-top:8px">${icono('mas', 18)}Agregar producto</button>
+          </div>
+          <div>
+            <h3>Costos adicionales</h3>
+            <div class="campos">
+              <label>Concepto <input name="notaCostosAdicionales" value="${esc(base?.notaCostosAdicionales)}" placeholder="Transporte"></label>
+              <label>Valor <input type="number" min="0" name="costosAdicionales" value="${base?.costosAdicionales ?? 0}" data-numero></label>
+            </div>
+            <p class="suave" style="font-size:13px;margin:8px 0 0">Se registra por separado: no se reparte entre los productos.</p>
+          </div>
+          <div class="campos">
+            <fieldset class="opciones"><legend>Método de pago</legend>${pastillas('metodoPago', [['EFECTIVO', 'Efectivo'], ['TRANSFERENCIA', 'Transferencia'], ['NEQUI', 'Nequi']], base?.pagos[0]?.metodo || 'EFECTIVO')}</fieldset>
+            <fieldset class="opciones"><legend>Estado del pago</legend>${pastillas('estadoPago', [['PAGADA', 'Pagada'], ['PARCIAL', 'Pago parcial'], ['CREDITO', 'A crédito']], base ? (base.pagado >= base.total ? 'PAGADA' : base.pagado ? 'PARCIAL' : 'CREDITO') : 'PAGADA')}</fieldset>
+          </div>
+          <div class="campos" id="campos-saldo">
+            <label id="campo-abono">Valor pagado ahora <input type="number" min="0" name="montoPagado" data-numero value="${base?.pagado ?? ''}"></label>
+            <label>Vencimiento del saldo <input type="date" name="fechaVencimiento" value="${base?.fechaVencimiento || ''}"></label>
+          </div>
+          <label class="check"><input type="checkbox" name="actualizarPrecios"> Actualizar el precio de venta al sugerido con el nuevo costo</label>
+          <div class="resumen">
+            <div class="suave-fila"><span>Total mercancía</span><span id="r-total">$0</span></div>
+            <div class="suave-fila"><span>Pagado ahora</span><span id="r-pagado">$0</span></div>
+            <div class="total"><span>Saldo pendiente</span><span id="r-saldo">$0</span></div>
+          </div>
+          <button class="primario ancho-total" ${productosLista.length ? '' : 'disabled'}>Registrar compra</button>
+        </form>
+      </section>
+      <aside class="lateral-derecho">
+        <section class="tarjeta">
+          <div class="fila" style="justify-content:space-between;margin-bottom:8px"><h2 style="margin:0">Compras recientes</h2>
+            <label class="check" style="font-size:.85rem"><input type="checkbox" id="solo-pendientes"> Por pagar</label></div>
+          <ul class="recientes" id="recientes"></ul>
+        </section>
+      </aside>
+    </div>`;
+
+  const form = $('#form-compra');
+  const lineas = $('#lineas');
+  const opciones = productosLista.map((p) => `<option value="${p.id}" data-costo="${p.costo}">${esc(p.nombre)} · ${esc(p.codigo)}</option>`).join('');
   const total = () => $$('.linea', lineas).reduce((s, l) => s + Number(l.querySelector('[name=cantidad]').value || 0) * Number(l.querySelector('[name=costo]').value || 0), 0);
-  const refrescar = () => { $('#total-compra', m).textContent = cop(total()); };
+  const estado = () => form.querySelector('[name=estadoPago]:checked').value;
+  const refrescar = () => {
+    $$('.linea', lineas).forEach((l) => {
+      l.querySelector('.subtotal').textContent = cop(Number(l.querySelector('[name=cantidad]').value || 0) * Number(l.querySelector('[name=costo]').value || 0));
+    });
+    const t = total();
+    const e = estado();
+    $('#campos-saldo').hidden = e === 'PAGADA';
+    $('#campo-abono').hidden = e !== 'PARCIAL';
+    const pagado = e === 'PAGADA' ? t : e === 'CREDITO' ? 0 : Math.min(t, Number(form.montoPagado.value || 0));
+    $('#r-total').textContent = cop(t);
+    $('#r-pagado').textContent = cop(pagado);
+    $('#r-saldo').textContent = cop(t - pagado);
+    return { t, pagado };
+  };
   const agregar = (previo = null) => {
+    if (!productosLista.length) return;
     const linea = document.createElement('div');
-    linea.className = 'linea campos';
-    linea.style.cssText = 'grid-template-columns: 2fr 90px 140px auto; align-items:end; margin-bottom:.5em';
+    linea.className = 'linea';
     linea.innerHTML = `<label>Producto <select name="producto">${opciones}</select></label>
       <label>Cantidad <input type="number" name="cantidad" min="1" value="${previo?.cantidad ?? 1}"></label>
       <label>Costo unitario <input type="number" name="costo" min="0"></label>
-      <button type="button" class="icono peligro" aria-label="Quitar">✕</button>`;
+      <div class="subtotal" aria-label="Subtotal">$0</div>
+      <button type="button" class="icono peligro" aria-label="Quitar línea">✕</button>`;
     const sel = linea.querySelector('select');
     const costo = linea.querySelector('[name=costo]');
     const ponerCosto = () => { costo.value = sel.selectedOptions[0].dataset.costo; refrescar(); };
     sel.addEventListener('change', ponerCosto);
     linea.querySelector('button').addEventListener('click', () => { linea.remove(); refrescar(); });
-    linea.addEventListener('input', refrescar);
     lineas.append(linea);
     if (previo) {
       sel.value = previo.productoId;
@@ -573,49 +771,57 @@ async function nuevaCompra(recargar, base = null) {
       ponerCosto();
     }
   };
-  $('#agregar-linea', m).addEventListener('click', () => agregar());
-  $('#pago-total', m).addEventListener('click', () => { $('[name=montoPagado]', m).value = total(); });
-  if (base) {
-    const f = $('#form-compra', m);
-    base.items.filter((i) => lista.some((p) => p.id === i.productoId)).forEach((i) => agregar(i));
-    f.costosAdicionales.value = base.costosAdicionales;
-    f.notaCostosAdicionales.value = base.notaCostosAdicionales || '';
-    f.montoPagado.value = base.pagado;
-    f.fechaVencimiento.value = base.fechaVencimiento || '';
-    if (base.pagos.length) f.metodoPago.value = base.pagos[0].metodo;
-  }
+  $('#agregar-linea').addEventListener('click', () => agregar());
+  form.addEventListener('input', refrescar);
+  form.addEventListener('change', refrescar);
+  if (base) base.items.filter((i) => productosLista.some((p) => p.id === i.productoId)).forEach((i) => agregar(i));
   if (!$$('.linea', lineas).length) agregar();
+  refrescar();
 
-  $('#form-compra', m).addEventListener('submit', (e) => {
+  form.addEventListener('submit', (e) => {
     e.preventDefault();
-    const f = e.target;
     const items = $$('.linea', lineas).map((l) => ({
       productoId: Number(l.querySelector('select').value),
       cantidad: Number(l.querySelector('[name=cantidad]').value),
       costoUnitario: Number(l.querySelector('[name=costo]').value),
     }));
     if (!items.length) return avisar('Agrega al menos un producto', 'error');
+    const { pagado } = refrescar();
     intentar(async () => {
       const c = await api('/api/compras', { metodo: 'POST', datos: {
-        fecha: f.fecha.value || null, proveedor: f.proveedor.value, items,
-        costosAdicionales: Number(f.costosAdicionales.value || 0), notaCostosAdicionales: f.notaCostosAdicionales.value,
-        montoPagado: Number(f.montoPagado.value || 0), metodoPago: f.metodoPago.value,
-        fechaVencimiento: f.fechaVencimiento.value || null, actualizarPrecios: f.actualizarPrecios.checked,
+        fecha: form.fecha.value || null, proveedor: form.proveedor.value, items,
+        costosAdicionales: Number(form.costosAdicionales.value || 0), notaCostosAdicionales: form.notaCostosAdicionales.value,
+        montoPagado: pagado, metodoPago: form.querySelector('[name=metodoPago]:checked').value,
+        fechaVencimiento: estado() === 'PAGADA' ? null : form.fechaVencimiento.value || null,
+        actualizarPrecios: form.actualizarPrecios.checked,
       } });
-      cerrarModal();
       avisar(base ? `Compra corregida: ahora es la ${c.numero} (la ${base.numero} quedó anulada).`
         : `Compra ${c.numero} registrada. Inventario actualizado.`);
-      recargar();
+      compras();
     });
   });
+
+  const cargarRecientes = () => intentar(async () => {
+    const lista = (await api('/api/compras?pendientes=' + $('#solo-pendientes').checked)).slice(0, 30);
+    $('#recientes').innerHTML = lista.map((c) => `<li data-id="${c.id}" tabindex="0">
+      <div class="arriba"><span>${c.numero}${c.proveedor ? ' · ' + esc(c.proveedor) : ''}</span><span>${cop(c.total)}</span></div>
+      <div class="abajo"><span>${fechaCorta(c.fecha + 'T00:00')}${c.saldo ? ' · saldo ' + cop(c.saldo) : ''}${c.saldo && c.fechaVencimiento ? ' · vence ' + fechaCorta(c.fechaVencimiento + 'T00:00') : ''}</span>${estadoCompra(c)}</div>
+    </li>`).join('') || '<li class="vacio" style="cursor:default">No hay compras.</li>';
+    $$('#recientes li[data-id]').forEach((li) => {
+      li.addEventListener('click', () => verCompra(li.dataset.id, cargarRecientes));
+      li.addEventListener('keydown', (e) => { if (e.key === 'Enter') verCompra(li.dataset.id, cargarRecientes); });
+    });
+  });
+  $('#solo-pendientes').addEventListener('change', cargarRecientes);
+  cargarRecientes();
 }
 
 async function verCompra(id, recargar) {
   const c = await api('/api/compras/' + id);
   const m = abrirModal('Compra ' + c.numero, `
-    <p>${fecha(c.fecha + 'T00:00')} · ${esc(c.proveedor || 'Sin proveedor')} ${c.anulada ? '<span class="etiqueta peligro">Anulada</span>' : ''}</p>
-    ${c.anulada ? `<p class="tarjeta" style="background:var(--peligro-fondo)">Anulada el ${fechaHora(c.fechaAnulacion)}. Motivo: ${esc(c.motivoAnulacion)}.
-      Sus unidades salieron del inventario y ya no cuenta como deuda.${c.pagado ? ` Habías pagado ${cop(c.pagado)}: si corresponde, pide la devolución al proveedor o usa ese valor en la compra corregida.` : ''}</p>` : ''}
+    <p>${fecha(c.fecha + 'T00:00')} · ${esc(c.proveedor || 'Sin proveedor')} ${estadoCompra(c)}</p>
+    ${c.anulada ? `<div class="aviso-caja peligro" style="margin-bottom:1em">Anulada el ${fechaHora(c.fechaAnulacion)}. Motivo: ${esc(c.motivoAnulacion)}.
+      Sus unidades salieron del inventario y ya no cuenta como deuda.${c.pagado ? ` Habías pagado ${cop(c.pagado)}: si corresponde, pide la devolución al proveedor o usa ese valor en la compra corregida.` : ''}</div>` : ''}
     <div class="tabla-contenedor"><table><thead><tr><th>Producto</th><th class="num">Cant.</th><th class="num">Costo</th><th class="num">Subtotal</th></tr></thead><tbody>
       ${c.items.map((i) => `<tr><td>${esc(i.productoNombre)}</td><td class="num">${i.cantidad}</td><td class="num">${cop(i.costoUnitario)}</td><td class="num">${cop(i.subtotal)}</td></tr>`).join('')}
     </tbody></table></div>
@@ -645,27 +851,23 @@ async function verCompra(id, recargar) {
 }
 
 /** Pide el motivo, anula la compra y, si se pidio corregir, abre el formulario lleno. */
-function anularCompra(c, recargar, corregir) {
-  const m = abrirModal((corregir ? 'Corregir compra ' : 'Anular compra ') + c.numero, `
-    <form id="form-anular-compra">
-      <p>Las <strong>${c.items.reduce((s, i) => s + i.cantidad, 0)} unidades</strong> de esta compra saldrán del inventario y dejará de contar como deuda con el proveedor.
-        Solo se puede si ninguna de esas unidades se ha vendido.</p>
-      ${corregir ? '<p>Después se abrirá el formulario con los mismos datos para que corrijas lo que estaba mal.</p>' : ''}
-      <label>Motivo (obligatorio) <input name="motivo" required placeholder="${corregir ? 'Ej.: cantidad mal digitada' : 'Ej.: compra duplicada'}"></label>
-    </form>
-    <div class="modal-pie"><button data-cerrar>Volver</button><button class="primario" form="form-anular-compra">${corregir ? 'Anular y corregir' : 'Anular compra'}</button></div>`);
-  $('#form-anular-compra', m).addEventListener('submit', (e) => {
-    e.preventDefault();
-    intentar(async () => {
-      const anulada = await api(`/api/compras/${c.id}/anular`, { metodo: 'POST', datos: { motivo: e.target.motivo.value } });
+async function anularCompra(c, recargar, corregir) {
+  const unidades = c.items.reduce((s, i) => s + i.cantidad, 0);
+  const motivo = await pedirMotivo((corregir ? 'Corregir compra ' : 'Anular compra ') + c.numero,
+    `Las <strong>${unidades} unidades</strong> de esta compra saldrán del inventario y dejará de contar como deuda con el proveedor.
+     Solo se puede si ninguna de esas unidades se ha vendido.${corregir ? ' Después se abrirá el formulario con los mismos datos para que corrijas lo que estaba mal.' : ''}`,
+    corregir ? 'Anular y corregir' : 'Anular compra', corregir ? 'Ej.: cantidad mal digitada' : 'Ej.: compra duplicada');
+  if (!motivo) return;
+  intentar(async () => {
+    const anulada = await api(`/api/compras/${c.id}/anular`, { metodo: 'POST', datos: { motivo } });
+    if (corregir) {
+      compraParaCorregir = anulada;
+      if (location.hash === '#compras') compras(); else location.hash = 'compras';
+    } else {
+      avisar(`Compra ${c.numero} anulada`);
       recargar();
-      if (corregir) {
-        nuevaCompra(recargar, anulada);
-      } else {
-        avisar(`Compra ${c.numero} anulada`);
-        verCompra(c.id, recargar);
-      }
-    });
+      verCompra(c.id, recargar);
+    }
   });
 }
 
@@ -683,304 +885,285 @@ function formularioAbono() {
 }
 
 // =====================================================================
-// INVENTARIO
-// =====================================================================
-
-async function inventario() {
-  vista().innerHTML = `
-    <div class="cabecera"><h1>Inventario</h1></div>
-    <div class="pestanas"><button class="activo" data-pestana="existencias">Existencias y lotes</button><button data-pestana="movimientos">Movimientos</button></div>
-    <div id="contenido-inventario"></div>`;
-  const mostrar = (cual) => {
-    $$('[data-pestana]').forEach((b) => b.classList.toggle('activo', b.dataset.pestana === cual));
-    intentar(cual === 'existencias' ? existencias : movimientos);
-  };
-  $$('[data-pestana]').forEach((b) => b.addEventListener('click', () => mostrar(b.dataset.pestana)));
-  await existencias();
-}
-
-async function existencias() {
-  const lista = await api('/api/productos?soloActivos=true');
-  const total = lista.reduce((s, p) => s + p.existencias, 0);
-  $('#contenido-inventario').innerHTML = `
-    <div class="barra"><input type="search" id="buscar-inv" placeholder="Buscar producto"><span class="suave">${total.toLocaleString('es-CO')} unidades en total</span></div>
-    <div class="tabla-contenedor"><table>
-    <thead><tr><th>Producto</th><th class="num">Existencias</th><th class="num">Reservadas</th><th class="num">Disponibles</th><th class="num">Mínimo</th><th class="num">Costo vigente</th><th></th></tr></thead>
-    <tbody>${lista.map((p) => `<tr data-texto="${esc((p.nombre + ' ' + p.codigo + ' ' + p.marca).toLowerCase())}">
-      <td><strong>${esc(p.nombre)}</strong> <span class="suave">${esc(p.codigo)}</span></td>
-      <td class="num">${etiquetaStock(p)}</td><td class="num">${p.reservado || ''}</td><td class="num">${p.disponible}</td>
-      <td class="num">${p.stockMinimo}</td><td class="num">${cop(p.costo)}</td>
-      <td class="num"><button class="pequeno" data-lotes="${p.id}">Lotes</button> <button class="pequeno" data-ajuste="${p.id}">Ajustar</button></td></tr>`).join('')}</tbody></table></div>`;
-  $('#buscar-inv').addEventListener('input', (e) => {
-    const t = e.target.value.toLowerCase();
-    $$('tr[data-texto]').forEach((tr) => { tr.hidden = !tr.dataset.texto.includes(t); });
-  });
-  const porId = (id) => lista.find((p) => p.id === Number(id));
-  $$('[data-lotes]').forEach((b) => b.addEventListener('click', () => intentar(() => verLotes(porId(b.dataset.lotes)))));
-  $$('[data-ajuste]').forEach((b) => b.addEventListener('click', () => ajustarInventario(porId(b.dataset.ajuste))));
-}
-
-async function verLotes(p) {
-  const lotes = await api(`/api/inventario/${p.id}/lotes`);
-  const disponibles = lotes.filter((l) => l.cantidadDisponible > 0);
-  const valor = disponibles.reduce((s, l) => s + l.cantidadDisponible * l.costoUnitario, 0);
-  abrirModal('Lotes · ' + esc(p.nombre), `
-    <p class="suave">Las ventas descuentan primero del lote más antiguo (PEPS). Total disponible: <strong>${p.existencias}</strong> · Valor al costo: <strong>${cop(valor)}</strong></p>
-    <div class="tabla-contenedor"><table><thead><tr><th>Fecha</th><th>Origen</th><th class="num">Entró</th><th class="num">Quedan</th><th class="num">Costo unit.</th></tr></thead><tbody>
-      ${lotes.map((l) => `<tr class="${l.cantidadDisponible ? '' : 'inactivo'}"><td>${fecha(l.fecha)}</td><td>${esc(l.origen)}</td><td class="num">${l.cantidadInicial}</td><td class="num">${l.cantidadDisponible}</td><td class="num">${cop(l.costoUnitario)}</td></tr>`).join('') || '<tr><td colspan="5" class="vacio">Sin lotes. Registra una compra.</td></tr>'}
-    </tbody></table></div><div class="modal-pie"><button data-cerrar>Cerrar</button></div>`);
-}
-
-function ajustarInventario(p) {
-  const m = abrirModal('Ajuste de inventario · ' + esc(p.nombre), `
-    <form id="form-ajuste" class="campos">
-      <label>Tipo <select name="tipo"><option value="1">Entrada (sumar)</option><option value="-1">Salida (restar)</option></select></label>
-      <label>Cantidad <input type="number" name="cantidad" min="1" required></label>
-      <label class="ancho">Motivo (opcional) <input name="motivo" placeholder="Conteo físico, regalo, etc."></label>
-      <p class="ancho suave">Existencias actuales: ${p.existencias}. Las entradas usan el costo vigente (${cop(p.costo)}); las salidas descuentan por PEPS.</p>
-    </form>
-    <div class="modal-pie"><button data-cerrar>Cancelar</button><button class="primario" form="form-ajuste">Guardar ajuste</button></div>`);
-  $('#form-ajuste', m).addEventListener('submit', (e) => {
-    e.preventDefault();
-    const f = e.target;
-    intentar(async () => {
-      await api('/api/inventario/ajustes', { metodo: 'POST', datos: { productoId: p.id, cantidad: Number(f.cantidad.value) * Number(f.tipo.value), motivo: f.motivo.value } });
-      cerrarModal();
-      avisar('Ajuste registrado');
-      existencias();
-    });
-  });
-}
-
-const TIPOS_MOV = { COMPRA: 'Compra', VENTA: 'Venta', AJUSTE_ENTRADA: 'Ajuste +', AJUSTE_SALIDA: 'Ajuste −', ANULACION_VENTA: 'Anulación venta', ANULACION_COMPRA: 'Anulación compra' };
-
-async function movimientos() {
-  const lista = await api('/api/inventario/movimientos');
-  $('#contenido-inventario').innerHTML = `<p class="suave">Últimos 200 movimientos.</p><div class="tabla-contenedor"><table>
-    <thead><tr><th>Fecha</th><th>Producto</th><th>Tipo</th><th class="num">Cantidad</th><th>Documento</th><th>Motivo</th></tr></thead>
-    <tbody>${lista.map((m) => `<tr><td>${fechaHora(m.fecha)}</td><td>${esc(m.productoNombre)}</td><td>${TIPOS_MOV[m.tipo]}</td>
-      <td class="num"><span class="etiqueta ${m.cantidad > 0 ? 'ok' : 'neutra'}">${m.cantidad > 0 ? '+' : ''}${m.cantidad}</span></td>
-      <td>${esc(m.referencia || '')}</td><td>${esc(m.motivo || '')}</td></tr>`).join('') || '<tr><td colspan="6" class="vacio">Sin movimientos</td></tr>'}</tbody></table></div>`;
-}
-
-// =====================================================================
-// VENTAS
+// VENTAS (historial)
 // =====================================================================
 
 async function ventas() {
   vista().innerHTML = `
-    <div class="cabecera"><h1>Ventas</h1><button class="primario" id="btn-venta">+ Nueva venta</button></div>
+    <header class="cabecera">
+      <div><h1>Ventas</h1><p class="sub">Historial, saldos y anulaciones</p></div>
+      <div class="acciones"><a class="boton primario" href="#nueva-venta">${icono('mas', 18)}Nueva venta</a></div>
+    </header>
     <div class="barra">
+      <label style="flex:1 1 240px;max-width:360px">Buscar <input type="search" id="buscar-venta" placeholder="Número o cliente"></label>
       <label>Desde <input type="date" id="desde"></label>
       <label>Hasta <input type="date" id="hasta"></label>
-      <label class="check" style="align-self:end"><input type="checkbox" id="pendientes"> Solo con saldo (cuentas por cobrar)</label>
-      <input type="search" id="buscar-venta" placeholder="Buscar por número o cliente" style="align-self:end">
+      <label class="check" style="min-height:46px"><input type="checkbox" id="pendientes"> Solo con saldo (cuentas por cobrar)</label>
     </div>
-    <div id="lista"></div>`;
+    <div id="lista" style="display:flex;flex-direction:column;gap:12px"></div>`;
   const cargar = () => intentar(async () => {
     const params = new URLSearchParams({ pendientes: $('#pendientes').checked });
     if ($('#desde').value) params.set('desde', $('#desde').value);
     if ($('#hasta').value) params.set('hasta', $('#hasta').value);
-    const texto = $('#buscar-venta').value.trim().toLowerCase();
+    const texto = normalizar($('#buscar-venta').value.trim());
     const lista = (await api('/api/ventas?' + params)).filter((v) => !texto
-      || (v.numero + ' ' + (v.pedidoNumero || '') + ' ' + (v.clienteNombre || 'cliente general')).toLowerCase().includes(texto));
+      || normalizar(v.numero + ' ' + (v.pedidoNumero || '') + ' ' + (v.clienteNombre || 'cliente general')).includes(texto));
     const activas = lista.filter((v) => v.estado === 'ACTIVA');
     $('#lista').innerHTML = lista.length ? `
-      <p class="suave">${activas.length} venta(s) · Total ${cop(activas.reduce((s, v) => s + v.total, 0))} · Utilidad ${cop(activas.reduce((s, v) => s + v.utilidad, 0))} · Por cobrar ${cop(activas.reduce((s, v) => s + v.saldo, 0))}</p>
+      <p class="suave" style="margin:0">${activas.length} venta(s) · Total ${cop(activas.reduce((s, v) => s + v.total, 0))} · Utilidad ${cop(activas.reduce((s, v) => s + v.utilidad, 0))} · Por cobrar ${cop(activas.reduce((s, v) => s + v.saldo, 0))}</p>
       <div class="tabla-contenedor"><table>
-      <thead><tr><th>Número</th><th>Fecha</th><th>Cliente</th><th class="num">Total</th><th class="num">Utilidad</th><th class="num">Saldo</th><th>Estado</th><th></th></tr></thead>
-      <tbody>${lista.map((v) => `<tr class="${v.estado === 'ANULADA' ? 'inactivo' : ''}">
-        <td><strong>${v.numero}</strong>${v.pedidoNumero ? `<br><span class="suave">${v.pedidoNumero}</span>` : ''}</td>
+      <thead><tr><th>Número</th><th>Fecha</th><th>Cliente</th><th class="num">Total</th><th class="num">Utilidad</th><th class="num">Saldo</th><th>Estado</th></tr></thead>
+      <tbody>${lista.map((v) => `<tr class="seleccionable ${v.estado === 'ANULADA' ? 'inactivo' : ''}" data-id="${v.id}" tabindex="0">
+        <td><strong>${v.numero}</strong>${v.pedidoNumero ? ` <span class="suave">${v.pedidoNumero}</span>` : ''}</td>
         <td>${fechaHora(v.fechaHora)}</td><td>${esc(v.clienteNombre || 'Cliente general')}</td>
         <td class="num">${cop(v.total)}</td><td class="num">${cop(v.utilidad)}</td>
-        <td class="num">${v.saldo ? cop(v.saldo) : '—'}${v.saldo && v.fechaVencimiento ? '<br>' + etiquetaVencimiento(v.fechaVencimiento, v.saldo) : ''}</td>
-        <td>${v.estado === 'ANULADA' ? '<span class="etiqueta peligro">Anulada</span>' : v.saldo ? '<span class="etiqueta aviso">Con saldo</span>' : '<span class="etiqueta ok">Pagada</span>'}</td>
-        <td class="num"><button class="pequeno" data-ver="${v.id}">Ver</button></td></tr>`).join('')}</tbody></table></div>`
+        <td class="num">${v.saldo ? cop(v.saldo) : '—'}${v.saldo && v.fechaVencimiento ? ' ' + etiquetaVencimiento(v.fechaVencimiento, v.saldo) : ''}</td>
+        <td>${v.estado === 'ANULADA' ? '<span class="etiqueta neutra">Anulada</span>' : v.saldo ? '<span class="etiqueta bajo">Con saldo</span>' : '<span class="etiqueta ok">Pagada</span>'}</td></tr>`).join('')}</tbody></table></div>`
       : '<div class="tarjeta vacio">No hay ventas para mostrar.</div>';
-    $$('[data-ver]').forEach((b) => b.addEventListener('click', () => verVenta(b.dataset.ver, cargar)));
+    $$('#lista tr[data-id]').forEach((fila) => {
+      fila.addEventListener('click', () => verVenta(fila.dataset.id, cargar));
+      fila.addEventListener('keydown', (e) => { if (e.key === 'Enter') verVenta(fila.dataset.id, cargar); });
+    });
   });
   ['desde', 'hasta', 'pendientes'].forEach((id) => $('#' + id).addEventListener('change', cargar));
   let espera;
   $('#buscar-venta').addEventListener('input', () => { clearTimeout(espera); espera = setTimeout(cargar, 250); });
-  $('#btn-venta').addEventListener('click', () => nuevaVenta(cargar));
   await cargar();
-  if (tomarAccion('nueva-venta')) nuevaVenta(cargar);
 }
 
-async function nuevaVenta(recargar) {
-  const [productosLista, clientesLista] = await Promise.all([api('/api/productos?soloActivos=true'), api('/api/clientes')]);
-  const carrito = [];
-  const m = abrirModal('Nueva venta', `
-    <div class="campos">
-      <label class="ancho">Buscar producto <input type="search" id="buscar-prod" placeholder="Nombre, código o marca" autocomplete="off"></label>
-    </div>
-    <div class="resultados" id="resultados" hidden></div>
-    <div id="carrito" style="margin-top:1em"></div>
-    <div class="campos" style="margin-top:1em">
-      <label>Descuento a toda la venta <span class="fila"><select id="desc-tipo" style="width:70px"><option value="">—</option><option value="PORCENTAJE">%</option><option value="VALOR">$</option></select><input type="number" id="desc-valor" min="0" value="0" style="flex:1"></span></label>
-      <label>Cliente <select id="cliente"><option value="">Cliente general (contado)</option>${clientesLista.map((c) => `<option value="${c.id}">${esc(c.nombre)}${c.telefono ? ' · ' + esc(c.telefono) : ''}</option>`).join('')}</select></label>
-      <div style="align-self:end"><button type="button" class="pequeno" id="cliente-nuevo">+ Cliente nuevo</button></div>
-    </div>
-    <div class="totales" style="margin:1em 0">
-      <span>Subtotal</span><span id="t-subtotal">$0</span>
-      <span>Descuento</span><span id="t-descuento">$0</span>
-      <span class="grande">Total</span><span class="grande" id="t-total">$0</span>
-    </div>
-    <div class="campos">
-      <label>Valor pagado <input type="number" id="pagado" min="0"></label>
-      <label>Método de pago <select id="metodo">${opcionesMetodo('EFECTIVO')}</select></label>
-      <label>Vence (si queda saldo) <input type="date" id="vence"></label>
-      <label class="ancho">Notas <input id="notas"></label>
-    </div>
-    <p class="suave" id="info-credito"></p>
-    <div class="modal-pie"><button data-cerrar>Cancelar</button><button class="primario" id="confirmar-venta">Confirmar venta</button></div>`, { grande: true });
+// =====================================================================
+// NUEVA VENTA (pagina de dos columnas, como el diseno)
+// =====================================================================
 
-  const buscar = $('#buscar-prod', m);
-  const resultados = $('#resultados', m);
-  let pagadoEditado = false;
+async function nuevaVenta() {
+  const [productosLista, clientesLista, numero] = await Promise.all([
+    api('/api/productos?soloActivos=true'), api('/api/clientes'), api('/api/consecutivos/V')]);
+  const carrito = [];
+  hayCambiosSinGuardar = () => carrito.length > 0;
+  const ahora = new Date();
+  const etiquetaCliente = (c) => c.nombre + (c.telefono ? ' · ' + c.telefono : '');
+
+  vista().innerHTML = `
+    <header class="cabecera">
+      <div class="titulo-numero"><h1>Nueva venta</h1><span class="etiqueta numero">${numero.numero}</span></div>
+      <p class="suave" style="margin:0">${fechaCorta(ahora)} · ${ahora.toLocaleTimeString('es-CO', { hour: 'numeric', minute: '2-digit' })} (se registra automáticamente)</p>
+    </header>
+    <div class="pagina-doble">
+      <section class="tarjeta principal">
+        <h2 style="margin:0">Productos</h2>
+        <label>Buscar por nombre, código, categoría o marca
+          <input id="buscar-prod" type="search" placeholder="Ej. labial, P-0003, Aurea" autocomplete="off"></label>
+        <ul class="lista-productos" id="lista-productos"></ul>
+      </section>
+      <aside class="lateral-derecho">
+        <section class="tarjeta" style="display:flex;flex-direction:column;gap:16px">
+          <h2 style="margin:0">Venta actual</h2>
+          <div>
+            <label>Cliente (obligatorio si queda saldo)
+              <input id="cliente" list="clientes-lista" placeholder="Cliente general (contado)" autocomplete="off"></label>
+            <datalist id="clientes-lista">${clientesLista.map((c) => `<option value="${esc(etiquetaCliente(c))}"></option>`).join('')}</datalist>
+            <div id="cliente-info" class="suave" style="font-size:13px;margin-top:6px"></div>
+          </div>
+          <ul class="lineas-venta" id="lineas"></ul>
+          <div id="advertencias"></div>
+          <div>
+            <button type="button" class="pequeno" id="mostrar-descuento">Descuento a toda la venta</button>
+            <div class="fila" id="descuento-global" hidden style="margin-top:8px">
+              <select id="desc-tipo" style="width:90px"><option value="PORCENTAJE">%</option><option value="VALOR">$</option></select>
+              <input type="number" id="desc-valor" min="0" value="0" style="flex:1" aria-label="Descuento a toda la venta">
+            </div>
+          </div>
+          <div class="resumen">
+            <div class="suave-fila"><span>Subtotal</span><span id="t-subtotal">$0</span></div>
+            <div class="suave-fila"><span>Descuento</span><span id="t-descuento">$0</span></div>
+            <div class="total"><span>Total a cobrar</span><span id="t-total">$0</span></div>
+          </div>
+          <fieldset class="opciones"><legend>Método de pago</legend>${pastillas('metodo', [['EFECTIVO', 'Efectivo'], ['NEQUI', 'Nequi'], ['TRANSFERENCIA', 'Transferencia']], 'EFECTIVO')}</fieldset>
+          <fieldset class="opciones"><legend>Condición</legend>${pastillas('condicion', [['COMPLETO', 'Pago completo'], ['PARCIAL', 'Pago parcial'], ['CREDITO', 'A crédito']], 'COMPLETO')}</fieldset>
+          <div class="campos" id="campos-credito" hidden>
+            <label id="campo-pagado">Valor pagado ahora <input type="number" id="pagado" min="0"></label>
+            <label>Vence <input type="date" id="vence"></label>
+          </div>
+          <label>Notas (opcional) <input id="notas"></label>
+          <button type="button" class="primario ancho-total" id="confirmar-venta" style="min-height:52px">Confirmar venta</button>
+        </section>
+      </aside>
+    </div>`;
 
   const descuentoDe = (tipo, valor, base) => !tipo || !valor ? 0 : Math.min(base, tipo === 'PORCENTAJE' ? Math.round(base * valor / 100) : valor);
+  const condicion = () => $('[name=condicion]:checked').value;
+  const clienteElegido = () => {
+    const texto = $('#cliente').value.trim();
+    return clientesLista.find((c) => etiquetaCliente(c) === texto || c.nombre.toLowerCase() === texto.toLowerCase()) || null;
+  };
+
   const calcular = () => {
     let subtotal = 0;
     for (const l of carrito) {
       l.total = l.cantidad * l.precio - descuentoDe(l.descTipo, l.descValor, l.cantidad * l.precio);
       subtotal += l.total;
     }
-    const desc = descuentoDe($('#desc-tipo', m).value, Number($('#desc-valor', m).value), subtotal);
+    const desc = $('#descuento-global').hidden ? 0 : descuentoDe($('#desc-tipo').value, Number($('#desc-valor').value), subtotal);
     const total = subtotal - desc;
-    $('#t-subtotal', m).textContent = cop(subtotal);
-    $('#t-descuento', m).textContent = desc ? '−' + cop(desc) : '$0';
-    $('#t-total', m).textContent = cop(total);
-    if (!pagadoEditado) $('#pagado', m).value = total;
-    const pagado = Number($('#pagado', m).value || 0);
-    const cliente = clientesLista.find((c) => c.id === Number($('#cliente', m).value));
+    $('#t-subtotal').textContent = cop(subtotal);
+    $('#t-descuento').textContent = desc ? '−' + cop(desc) : '$0';
+    $('#t-total').textContent = cop(total);
+
+    const cond = condicion();
+    $('#campos-credito').hidden = cond === 'COMPLETO';
+    $('#campo-pagado').hidden = cond !== 'PARCIAL';
+    const pagado = cond === 'COMPLETO' ? total : cond === 'CREDITO' ? 0 : Math.min(total, Number($('#pagado').value || 0));
+
+    const cliente = clienteElegido();
+    const texto = $('#cliente').value.trim();
     let info = '';
-    if (pagado < total) info = `Queda un saldo de ${cop(total - pagado)} (venta a crédito${cliente ? '' : ': selecciona un cliente'}).`;
-    if (cliente && cliente.saldo) info += ` ${esc(cliente.nombre)} ya debe ${cop(cliente.saldo)}.`;
-    if (cliente?.limiteCredito) info += ` Límite de crédito: ${cop(cliente.limiteCredito)}.`;
-    $('#info-credito', m).innerHTML = info;
-    return total;
+    if (texto && !cliente) info = `«${esc(texto)}» no está registrado. <button type="button" class="pequeno" id="crear-cliente">Crear cliente</button>`;
+    else if (cliente) info = [cliente.saldo ? `Debe ${cop(cliente.saldo)}` : 'Sin saldo pendiente', cliente.limiteCredito ? `límite ${cop(cliente.limiteCredito)}` : ''].filter(Boolean).join(' · ');
+    if (cond !== 'COMPLETO' && !cliente) info = (info ? info + '<br>' : '') + 'Para vender con saldo pendiente elige o crea un cliente.';
+    $('#cliente-info').innerHTML = info;
+    $('#crear-cliente')?.addEventListener('click', crearCliente);
+
+    const bajoCosto = carrito.filter((l) => l.cantidad && l.total / l.cantidad < l.costo);
+    $('#advertencias').innerHTML = bajoCosto.map((l) => `<div class="aviso-caja">${icono('alerta')}<span>${esc(l.nombre)} se vende a ${cop(l.total / l.cantidad)}, por debajo del costo (${cop(l.costo)}). Confirma antes de continuar.</span></div>`).join('');
+    return { total, pagado, cliente };
+  };
+
+  const dibujarProductos = () => {
+    const texto = normalizar($('#buscar-prod').value);
+    const lista = productosLista.filter((p) => !texto || normalizar(`${p.nombre} ${p.codigo} ${p.marca} ${p.categoriaNombre || ''}`).includes(texto)).slice(0, 80);
+    $('#lista-productos').innerHTML = lista.map((p) => {
+      const enCarrito = carrito.find((l) => l.productoId === p.id)?.cantidad || 0;
+      const quedan = p.disponible - enCarrito;
+      return `<li>
+        <img class="miniatura" src="${fotoProducto(p)}" alt="">
+        <div class="texto"><strong>${esc(p.nombre)}</strong><span>${esc(p.codigo)} · ${esc(p.marca)} · ${p.disponible ? p.disponible + ' disponibles' : 'sin existencias'}</span></div>
+        ${p.disponible ? `<span class="precio">${cop(p.precioVenta)}</span>` : '<span class="etiqueta agotado">Agotado</span>'}
+        <button type="button" class="contorno pequeno" data-agregar="${p.id}" ${quedan > 0 ? '' : 'disabled'}>Agregar</button>
+      </li>`;
+    }).join('') || '<li class="vacio">No se encontraron productos.</li>';
   };
 
   const dibujarCarrito = () => {
-    calcular(); // primero se calculan los totales de cada linea, luego se dibujan
-    $('#carrito', m).innerHTML = carrito.length ? `
-      <div class="carrito-titulos"><span>Producto</span><span>Cantidad</span><span>Precio c/u</span><span>Descuento</span><span>Total</span><span></span></div>
-      ${carrito.map((l, i) => `
-      <div class="carrito-linea" data-i="${i}">
-        <div class="nombre"><strong>${esc(l.nombre)}</strong><br><span class="suave">Disp. ${l.disponible} · Lista ${cop(l.precioLista)}${l.precio < l.costo ? ' · <span class="etiqueta peligro">bajo costo</span>' : ''}</span></div>
-        <label><span class="rotulo">Cantidad</span><input type="number" min="1" max="${l.disponible}" value="${l.cantidad}" data-campo="cantidad" aria-label="Cantidad"></label>
-        <label><span class="rotulo">Precio c/u</span><input type="number" min="0" value="${l.precio}" data-campo="precio" aria-label="Precio unitario"></label>
-        <label><span class="rotulo">Descuento (% o $)</span><span class="desc"><select data-campo="descTipo" aria-label="Tipo de descuento"><option value="">—</option><option value="PORCENTAJE" ${l.descTipo === 'PORCENTAJE' ? 'selected' : ''}>%</option><option value="VALOR" ${l.descTipo === 'VALOR' ? 'selected' : ''}>$</option></select>
-          <input type="number" min="0" value="${l.descValor}" data-campo="descValor" aria-label="Descuento"></span></label>
-        <div><span class="rotulo">Total</span><strong class="num" data-total>${cop(l.total)}</strong></div>
-        <button type="button" class="icono peligro" data-quitar aria-label="Quitar ${esc(l.nombre)}" title="Quitar del carrito">✕</button>
-      </div>`).join('')}` : '<p class="vacio">Busca productos y agrégalos al carrito.</p>';
+    calcular();
+    $('#lineas').innerHTML = carrito.map((l, i) => {
+      const ajustado = l.precio !== l.precioLista || l.descValor;
+      return `<li data-i="${i}">
+        <div class="arriba"><span>${esc(l.nombre)}</span><span>${cop(l.total)}</span></div>
+        <div class="abajo">
+          <span class="stepper"><button type="button" data-menos aria-label="Quitar una unidad">−</button><output>${l.cantidad}</output><button type="button" class="mas" data-mas aria-label="Agregar una unidad">+</button></span>
+          <button type="button" class="pequeno" data-ajustar>${ajustado ? 'Precio ajustado' : 'Ajustar precio'}</button>
+          <span class="detalle">${ajustado ? `${cop(l.precio)} c/u · lista ${cop(l.precioLista)}` : cop(l.precio) + ' c/u'}</span>
+        </div>
+        <div class="ajuste-precio">
+          <label>Precio c/u <input type="number" min="0" value="${l.precio}" data-campo="precio"></label>
+          <label>Descuento <span class="fila" style="flex-wrap:nowrap"><select data-campo="descTipo" style="width:80px"><option value="">—</option><option value="PORCENTAJE" ${l.descTipo === 'PORCENTAJE' ? 'selected' : ''}>%</option><option value="VALOR" ${l.descTipo === 'VALOR' ? 'selected' : ''}>$</option></select>
+            <input type="number" min="0" value="${l.descValor}" data-campo="descValor"></span></label>
+          <button type="button" class="pequeno peligro" data-quitar style="align-self:flex-end">Quitar</button>
+        </div>
+      </li>`;
+    }).join('') || '<li class="vacio" style="border:0">Agrega productos desde la lista.</li>';
+    dibujarProductos();
   };
 
-  $('#carrito', m).addEventListener('input', (e) => {
-    const fila = e.target.closest('[data-i]');
-    if (!fila || !e.target.dataset.campo) return;
-    const linea = carrito[fila.dataset.i];
-    const campo = e.target.dataset.campo;
-    linea[campo] = campo === 'descTipo' ? e.target.value : Number(e.target.value || 0);
-    calcular();
-    fila.querySelector('[data-total]').textContent = cop(linea.total);
-  });
-  $('#carrito', m).addEventListener('change', (e) => { if (e.target.dataset.campo === 'precio') dibujarCarrito(); });
-  $('#carrito', m).addEventListener('click', (e) => {
-    if (!e.target.closest('[data-quitar]')) return;
-    carrito.splice(e.target.closest('[data-i]').dataset.i, 1);
-    dibujarCarrito();
-  });
-
-  buscar.addEventListener('input', () => {
-    const t = buscar.value.trim().toLowerCase();
-    if (!t) { resultados.hidden = true; return; }
-    const encontrados = productosLista.filter((p) => (p.nombre + ' ' + p.codigo + ' ' + p.marca).toLowerCase().includes(t)).slice(0, 20);
-    resultados.hidden = false;
-    resultados.innerHTML = encontrados.map((p) => `<button type="button" data-id="${p.id}" ${p.disponible ? '' : 'disabled'}>
-      <span><strong>${esc(p.nombre)}</strong> <span class="suave">${esc(p.marca)} · ${esc(p.codigo)}</span></span>
-      <span>${p.disponible ? cop(p.precioVenta) + ' · ' + p.disponible + ' disp.' : '<span class="etiqueta agotado">Agotado</span>'}</span></button>`).join('') || '<p class="vacio">Sin resultados</p>';
-  });
-  resultados.addEventListener('click', (e) => {
-    const b = e.target.closest('[data-id]');
-    if (!b) return;
-    const p = productosLista.find((x) => x.id === Number(b.dataset.id));
-    const existente = carrito.find((l) => l.productoId === p.id);
-    if (existente) {
-      if (existente.cantidad < p.disponible) existente.cantidad++;
-      else avisar('Stock insuficiente: solo hay ' + p.disponible, 'error');
-    } else {
-      carrito.push({ productoId: p.id, nombre: p.nombre, disponible: p.disponible, precioLista: p.precioVenta, costo: p.costo, cantidad: 1, precio: p.precioVenta, descTipo: '', descValor: 0, total: 0 });
-    }
-    buscar.value = '';
-    resultados.hidden = true;
-    buscar.focus();
-    dibujarCarrito();
-  });
-
-  ['#desc-tipo', '#desc-valor', '#cliente'].forEach((s) => $(s, m).addEventListener('input', calcular));
-  $('#pagado', m).addEventListener('input', () => { pagadoEditado = true; calcular(); });
-  $('#cliente-nuevo', m).addEventListener('click', () => {
-    const nombre = prompt('Nombre del cliente');
-    if (!nombre) return;
-    const telefono = prompt('Teléfono (opcional)') || '';
+  async function crearCliente() {
+    const nombre = $('#cliente').value.trim();
+    const telefono = prompt(`Teléfono de ${nombre} (opcional)`) ?? '';
     intentar(async () => {
       const c = await api('/api/clientes', { metodo: 'POST', datos: { nombre, telefono } });
       clientesLista.push(c);
-      $('#cliente', m).insertAdjacentHTML('beforeend', `<option value="${c.id}" selected>${esc(c.nombre)}</option>`);
+      $('#clientes-lista').insertAdjacentHTML('beforeend', `<option value="${esc(etiquetaCliente(c))}"></option>`);
+      $('#cliente').value = etiquetaCliente(c);
+      avisar(`Cliente ${c.nombre} creado`);
       calcular();
     });
+  }
+
+  $('#lista-productos').addEventListener('click', (e) => {
+    const b = e.target.closest('[data-agregar]');
+    if (!b) return;
+    const p = productosLista.find((x) => x.id === Number(b.dataset.agregar));
+    const existente = carrito.find((l) => l.productoId === p.id);
+    if (existente) existente.cantidad++;
+    else carrito.push({ productoId: p.id, nombre: p.nombre, disponible: p.disponible, precioLista: p.precioVenta, costo: p.costo, cantidad: 1, precio: p.precioVenta, descTipo: '', descValor: 0, total: 0 });
+    dibujarCarrito();
   });
+  $('#lineas').addEventListener('click', (e) => {
+    const fila = e.target.closest('[data-i]');
+    if (!fila) return;
+    const l = carrito[fila.dataset.i];
+    if (e.target.closest('[data-mas]')) {
+      if (l.cantidad < l.disponible) l.cantidad++; else avisar(`Solo hay ${l.disponible} de ${l.nombre}`, 'error');
+    } else if (e.target.closest('[data-menos]')) {
+      l.cantidad--;
+      if (l.cantidad === 0) carrito.splice(fila.dataset.i, 1);
+    } else if (e.target.closest('[data-quitar]')) {
+      carrito.splice(fila.dataset.i, 1);
+    } else if (e.target.closest('[data-ajustar]')) {
+      fila.querySelector('.ajuste-precio').classList.toggle('abierto');
+      return;
+    } else {
+      return;
+    }
+    dibujarCarrito();
+  });
+  $('#lineas').addEventListener('change', (e) => {
+    const fila = e.target.closest('[data-i]');
+    if (!fila || !e.target.dataset.campo) return;
+    const l = carrito[fila.dataset.i];
+    l[e.target.dataset.campo] = e.target.dataset.campo === 'descTipo' ? e.target.value : Number(e.target.value || 0);
+    dibujarCarrito();
+    $(`[data-i="${fila.dataset.i}"] .ajuste-precio`)?.classList.add('abierto');
+  });
+  let espera;
+  $('#buscar-prod').addEventListener('input', () => { clearTimeout(espera); espera = setTimeout(dibujarProductos, 120); });
+  $('#mostrar-descuento').addEventListener('click', () => { $('#descuento-global').hidden = !$('#descuento-global').hidden; calcular(); });
+  ['#desc-tipo', '#desc-valor', '#cliente', '#pagado'].forEach((s) => $(s).addEventListener('input', calcular));
+  $$('[name=condicion]').forEach((r) => r.addEventListener('change', calcular));
 
   const enviar = async (confirmarAdvertencias) => {
-    const total = calcular();
-    if (!carrito.length) return avisar('El carrito está vacío', 'error');
-    for (const l of carrito) {
-      if (l.cantidad > l.disponible) return avisar(`Stock insuficiente de ${l.nombre}: hay ${l.disponible}`, 'error');
-    }
+    if (!carrito.length) return avisar('Agrega al menos un producto', 'error');
+    const { total, pagado, cliente } = calcular();
+    if ($('#cliente').value.trim() && !cliente) return avisar('Ese cliente no está registrado: créalo o deja el campo vacío', 'error');
+    if (pagado < total && !cliente) return avisar('Para vender con saldo pendiente elige un cliente', 'error');
     const datos = {
-      clienteId: Number($('#cliente', m).value) || null,
+      clienteId: cliente?.id ?? null,
       items: carrito.map((l) => ({ productoId: l.productoId, cantidad: l.cantidad, precioUnitario: l.precio, descuentoTipo: l.descTipo || null, descuentoValor: l.descValor || 0 })),
-      descuentoTipo: $('#desc-tipo', m).value || null,
-      descuentoValor: Number($('#desc-valor', m).value || 0),
-      montoPagado: Math.min(total, Number($('#pagado', m).value || 0)),
-      metodoPago: $('#metodo', m).value,
-      fechaVencimiento: $('#vence', m).value || null,
-      notas: $('#notas', m).value,
+      descuentoTipo: $('#descuento-global').hidden ? null : $('#desc-tipo').value,
+      descuentoValor: $('#descuento-global').hidden ? 0 : Number($('#desc-valor').value || 0),
+      montoPagado: pagado,
+      metodoPago: $('[name=metodo]:checked').value,
+      fechaVencimiento: condicion() === 'COMPLETO' ? null : $('#vence').value || null,
+      notas: $('#notas').value,
       confirmarAdvertencias,
     };
-    const boton = $('#confirmar-venta', m);
+    const boton = $('#confirmar-venta');
     boton.disabled = true;
     try {
       const v = await api('/api/ventas', { metodo: 'POST', datos });
-      cerrarModal();
+      carrito.length = 0;
       avisar(`Venta ${v.numero} registrada`);
-      recargar();
-      verVenta(v.id, recargar);
+      await nuevaVenta();
+      verVenta(v.id);
     } catch (e) {
+      boton.disabled = false;
       if (e.estado === 409 && e.advertencias) {
-        if (confirm('Atención:\n\n• ' + e.advertencias.join('\n• ') + '\n\n¿Deseas confirmar la venta de todas formas?')) {
-          boton.disabled = false;
-          return enviar(true);
-        }
+        if (confirm('Atención:\n\n• ' + e.advertencias.join('\n• ') + '\n\n¿Deseas confirmar la venta de todas formas?')) return enviar(true);
       } else {
         avisar(e.message, 'error');
       }
     }
-    boton.disabled = false;
   };
-  $('#confirmar-venta', m).addEventListener('click', () => enviar(false));
+  $('#confirmar-venta').addEventListener('click', () => enviar(false));
   dibujarCarrito();
+  $('#buscar-prod').focus();
 }
 
 async function verVenta(id, recargar) {
   const v = await api('/api/ventas/' + id);
   const anulada = v.estado === 'ANULADA';
   const m = abrirModal('Venta ' + v.numero, `
-    <p>${fechaHora(v.fechaHora)} · ${esc(v.clienteNombre || 'Cliente general')} ${anulada ? '<span class="etiqueta peligro">Anulada</span>' : ''}</p>
-    ${anulada ? `<p class="tarjeta" style="background:var(--peligro-fondo)">Anulada el ${fechaHora(v.fechaAnulacion)}. Motivo: ${esc(v.motivoAnulacion)}</p>` : ''}
+    <p>${fechaHora(v.fechaHora)} · ${esc(v.clienteNombre || 'Cliente general')} ${anulada ? '<span class="etiqueta neutra">Anulada</span>' : ''}</p>
+    ${anulada ? `<div class="aviso-caja peligro" style="margin-bottom:1em">Anulada el ${fechaHora(v.fechaAnulacion)}. Motivo: ${esc(v.motivoAnulacion)}</div>` : ''}
     <div class="tabla-contenedor"><table><thead><tr><th>Producto</th><th class="num">Cant.</th><th class="num">Precio</th><th class="num">Desc.</th><th class="num">Total</th><th class="num">Costo PEPS</th></tr></thead><tbody>
       ${v.items.map((i) => `<tr><td>${esc(i.productoNombre)}${i.precioUnitario !== i.precioLista ? `<br><span class="suave">Lista ${cop(i.precioLista)}</span>` : ''}</td><td class="num">${i.cantidad}</td><td class="num">${cop(i.precioUnitario)}</td><td class="num">${i.descuento ? '−' + cop(i.descuento) : ''}</td><td class="num">${cop(i.total)}</td><td class="num">${cop(i.costo)}</td></tr>`).join('')}
     </tbody></table></div>
@@ -1000,7 +1183,7 @@ async function verVenta(id, recargar) {
     ${!anulada && v.saldo ? formularioAbono() : ''}
     <div class="modal-pie">
       ${anulada ? '' : '<button class="peligro" id="anular">Anular venta</button>'}
-      ${v.clienteTelefono ? `<a class="boton" target="_blank" rel="noopener" href="https://wa.me/${telWa(v.clienteTelefono)}?text=${encodeURIComponent(`Hola ${v.clienteNombre}, gracias por tu compra ${v.numero} por ${cop(v.total)}.${v.saldo ? ' Saldo pendiente: ' + cop(v.saldo) + '.' : ''}`)}">WhatsApp</a>` : ''}
+      ${v.clienteTelefono ? `<a class="boton" target="_blank" rel="noopener" href="https://wa.me/${telWa(v.clienteTelefono)}?text=${encodeURIComponent(`Hola ${v.clienteNombre}, gracias por tu compra ${v.numero} en ${negocio.nombreNegocio} por ${cop(v.total)}.${v.saldo ? ' Saldo pendiente: ' + cop(v.saldo) + '.' : ''}`)}">WhatsApp</a>` : ''}
       <a class="boton" href="/admin/recibo.html?id=${v.id}" target="_blank">Recibo PDF</a>
       <button class="primario" data-cerrar>Cerrar</button>
     </div>`, { grande: true });
@@ -1013,9 +1196,10 @@ async function verVenta(id, recargar) {
       verVenta(id, recargar);
     });
   });
-  $('#anular', m)?.addEventListener('click', () => {
-    const motivo = prompt('Motivo de la anulación (obligatorio). Las unidades regresarán al inventario.');
-    if (!motivo || !motivo.trim()) return;
+  $('#anular', m)?.addEventListener('click', async () => {
+    const motivo = await pedirMotivo('Anular venta ' + v.numero,
+      'Las unidades regresarán a sus lotes originales y la venta quedará marcada como anulada.', 'Anular venta', 'Ej.: el cliente devolvió el producto');
+    if (!motivo) return;
     intentar(async () => {
       await api(`/api/ventas/${id}/anular`, { metodo: 'POST', datos: { motivo } });
       avisar('Venta anulada');
@@ -1031,9 +1215,14 @@ async function verVenta(id, recargar) {
 
 async function clientes() {
   vista().innerHTML = `
-    <div class="cabecera"><h1>Clientes</h1><button class="primario" id="btn-cliente">+ Nuevo cliente</button></div>
-    <div class="barra"><input type="search" id="buscar" placeholder="Buscar por nombre, teléfono o documento">
-      <label class="check"><input type="checkbox" id="con-saldo"> Solo con deuda</label></div>
+    <header class="cabecera">
+      <div><h1>Clientes</h1><p class="sub">Historial de compras, saldos y abonos</p></div>
+      <div class="acciones"><button class="primario" id="btn-cliente">${icono('mas', 18)}Nuevo cliente</button></div>
+    </header>
+    <div class="barra">
+      <label style="flex:1 1 280px;max-width:420px">Buscar <input type="search" id="buscar" placeholder="Nombre, teléfono o documento"></label>
+      <label class="check" style="min-height:46px"><input type="checkbox" id="con-saldo"> Solo con deuda</label>
+    </div>
     <div id="lista"></div>`;
   const cargar = () => intentar(async () => {
     let lista = await api('/api/clientes?q=' + encodeURIComponent($('#buscar').value));
@@ -1041,8 +1230,8 @@ async function clientes() {
     $('#lista').innerHTML = lista.length ? `<div class="tabla-contenedor"><table>
       <thead><tr><th>Nombre</th><th>Teléfono</th><th>Documento</th><th class="num">Saldo</th><th>Última compra</th><th></th></tr></thead>
       <tbody>${lista.map((c) => `<tr><td><strong>${esc(c.nombre)}</strong></td><td>${esc(c.telefono || '')}</td><td>${esc(c.documento || '')}</td>
-        <td class="num">${c.saldo ? `<span class="etiqueta aviso">${cop(c.saldo)}</span>` : '—'}</td><td>${fecha(c.ultimaCompra) || '—'}</td>
-        <td class="num"><button class="pequeno" data-ver="${c.id}">Ver</button> <button class="pequeno" data-editar="${c.id}">Editar</button></td></tr>`).join('')}</tbody></table></div>`
+        <td class="num">${c.saldo ? `<span class="etiqueta bajo">${cop(c.saldo)}</span>` : '—'}</td><td>${fecha(c.ultimaCompra) || '—'}</td>
+        <td class="fila"><button class="pequeno" data-ver="${c.id}">Ver</button> <button class="pequeno" data-editar="${c.id}">Editar</button></td></tr>`).join('')}</tbody></table></div>`
       : '<div class="tarjeta vacio">No hay clientes.</div>';
     $$('[data-ver]').forEach((b) => b.addEventListener('click', () => intentar(() => verCliente(b.dataset.ver, cargar))));
     $$('[data-editar]').forEach((b) => b.addEventListener('click', () => formularioCliente(lista.find((c) => c.id === Number(b.dataset.editar)), cargar)));
@@ -1081,14 +1270,14 @@ async function verCliente(id, recargar) {
   const m = abrirModal(esc(c.nombre), `
     <p class="suave">${[c.telefono, c.documento, c.direccion].filter(Boolean).map(esc).join(' · ') || 'Sin datos de contacto'}${c.limiteCredito ? ' · Límite ' + cop(c.limiteCredito) : ''}</p>
     <div class="indicadores">
-      <div class="tarjeta indicador"><div class="titulo">Saldo pendiente</div><div class="valor">${cop(c.saldo)}</div></div>
-      <div class="tarjeta indicador"><div class="titulo">Compras</div><div class="valor">${d.ventas.filter((v) => v.estado === 'ACTIVA').length}</div><div class="detalle">Última: ${fecha(c.ultimaCompra) || '—'}</div></div>
+      <div class="indicador rosa"><span class="titulo">Saldo pendiente</span><span class="valor">${cop(c.saldo)}</span></div>
+      <div class="indicador"><span class="titulo">Compras</span><span class="valor">${d.ventas.filter((v) => v.estado === 'ACTIVA').length}</span><span class="detalle">Última: ${fecha(c.ultimaCompra) || '—'}</span></div>
     </div>
-    ${c.saldo ? `<h3>Registrar abono</h3><p class="suave">Se aplica a las deudas más antiguas primero.</p>${formularioAbono()}` : ''}
+    ${c.saldo ? `<h3 style="margin-top:1em">Registrar abono</h3><p class="suave">Se aplica a las deudas más antiguas primero.</p>${formularioAbono()}` : ''}
     <h3 style="margin-top:1em">Historial de compras</h3>
     <div class="tabla-contenedor"><table><thead><tr><th>Venta</th><th>Fecha</th><th class="num">Total</th><th class="num">Descuentos</th><th class="num">Saldo</th><th></th></tr></thead><tbody>
       ${d.ventas.map((v) => `<tr class="${v.estado === 'ANULADA' ? 'inactivo' : ''}"><td>${v.numero}${v.estado === 'ANULADA' ? ' (anulada)' : ''}</td><td>${fechaHora(v.fechaHora)}</td><td class="num">${cop(v.total)}</td>
-        <td class="num">${cop(v.descuentoGlobal + v.items.reduce((s, i) => s + i.descuento, 0))}</td><td class="num">${v.saldo ? cop(v.saldo) : '—'}</td><td class="num"><button class="pequeno" data-venta="${v.id}">Ver</button></td></tr>`).join('') || '<tr><td colspan="6" class="vacio">Sin compras</td></tr>'}
+        <td class="num">${cop(v.descuentoGlobal + v.items.reduce((s, i) => s + i.descuento, 0))}</td><td class="num">${v.saldo ? cop(v.saldo) : '—'}</td><td class="fila"><button class="pequeno" data-venta="${v.id}">Ver</button></td></tr>`).join('') || '<tr><td colspan="6" class="vacio">Sin compras</td></tr>'}
     </tbody></table></div>
     <h3 style="margin-top:1em">Pagos y abonos</h3>
     ${tablaPagos(d.pagos)}
@@ -1110,38 +1299,49 @@ async function verCliente(id, recargar) {
 // =====================================================================
 
 const ESTADOS = {
-  PENDIENTE: ['Pendiente', 'aviso'], CONFIRMADO: ['Confirmado', 'ok'], EN_PREPARACION: ['En preparación', 'ok'],
-  LISTO: ['Listo para entrega', 'ok'], ENTREGADO: ['Entregado', 'neutra'], CANCELADO: ['Cancelado', 'peligro'],
+  PENDIENTE: ['Pendiente', 'bajo'], CONFIRMADO: ['Confirmado', 'ok'], EN_PREPARACION: ['En preparación', 'ok'],
+  LISTO: ['Listo para entrega', 'ok'], ENTREGADO: ['Entregado', 'neutra'], CANCELADO: ['Cancelado', 'neutra'],
 };
 const SIGUIENTE = { PENDIENTE: 'CONFIRMADO', CONFIRMADO: 'EN_PREPARACION', EN_PREPARACION: 'LISTO', LISTO: 'ENTREGADO' };
+const FORMAS_PAGO = { ANTICIPADO: 'Pago anticipado por transferencia o Nequi', CONTRA_ENTREGA: 'Paga al recibir o recoger' };
 
 async function pedidos() {
   vista().innerHTML = `
-    <div class="cabecera"><h1>Pedidos del catálogo</h1></div>
-    <div class="barra"><select id="filtro"><option value="activos">En curso</option><option value="PENDIENTE">Pendientes</option><option value="todos">Todos</option></select></div>
-    <p class="suave">Los pedidos pendientes reservan existencias. Al confirmar se crea la venta (pendiente de pago); al cancelar se liberan las unidades.</p>
+    <header class="cabecera">
+      <div><h1>Pedidos del catálogo</h1><p class="sub">Los pedidos pendientes reservan existencias. Al confirmar se crea la venta; al cancelar se liberan las unidades.</p></div>
+    </header>
+    <div class="chips" role="group" aria-label="Filtrar pedidos">
+      <button type="button" class="chip" data-filtro="activos" aria-pressed="true">En curso</button>
+      <button type="button" class="chip" data-filtro="PENDIENTE" aria-pressed="false">Pendientes</button>
+      <button type="button" class="chip" data-filtro="todos" aria-pressed="false">Todos</button>
+    </div>
     <div id="lista" class="lista-pedidos"></div>`;
+  let filtro = 'activos';
   const cargar = () => intentar(async () => {
-    const filtro = $('#filtro').value;
     const lista = (await api('/api/pedidos')).filter((p) => filtro === 'todos' || (filtro === 'activos' ? !['ENTREGADO', 'CANCELADO'].includes(p.estado) : p.estado === filtro));
     $('#lista').innerHTML = lista.map((p) => `<article class="tarjeta pedido-tarjeta">
-      <div class="fila"><strong>${p.numero}</strong><span class="espacio"></span><span class="etiqueta ${ESTADOS[p.estado][1]}">${ESTADOS[p.estado][0]}</span></div>
+      <div class="fila"><strong style="font-size:1.05rem">${p.numero}</strong><span class="espacio"></span><span class="etiqueta ${ESTADOS[p.estado][1]}">${ESTADOS[p.estado][0]}</span></div>
       <div class="suave">${fechaHora(p.fechaHora)}</div>
       <div><strong>${esc(p.nombreCliente)}</strong> · ${esc(p.telefono)}</div>
-      <div>${p.tipoEntrega === 'DOMICILIO' ? '🛵 Domicilio: ' + esc(p.direccion) : '🏬 Recoge en tienda'}</div>
-      <ul style="margin:.2em 0;padding-left:1.2em">${p.items.map((i) => `<li>${i.cantidad} × ${esc(i.productoNombre)} — ${cop(i.total)}</li>`).join('')}</ul>
+      <div>${p.tipoEntrega === 'DOMICILIO' ? 'Domicilio: ' + esc(p.direccion) : 'Recoge en tienda'}</div>
+      ${p.formaPago ? `<div class="suave">${FORMAS_PAGO[p.formaPago]}</div>` : ''}
+      <ul>${p.items.map((i) => `<li>${i.cantidad} × ${esc(i.productoNombre)} — ${cop(i.total)}</li>`).join('')}</ul>
       ${p.costoDomicilio ? `<div class="suave">Domicilio ${cop(p.costoDomicilio)}</div>` : ''}
       ${p.observaciones ? `<div class="suave">“${esc(p.observaciones)}”</div>` : ''}
-      <div class="fila"><strong>Total ${cop(p.total)}</strong><span class="espacio"></span>${p.ventaNumero ? `<button class="pequeno" data-venta="${p.ventaId}">${p.ventaNumero}</button>` : ''}</div>
+      <div class="fila"><span class="cifra" style="font-size:1.6rem">${cop(p.total)}</span><span class="espacio"></span>${p.ventaNumero ? `<button class="pequeno" data-venta="${p.ventaId}">${p.ventaNumero}</button>` : ''}</div>
       <div class="fila">
         ${SIGUIENTE[p.estado] ? `<button class="primario pequeno" data-estado="${SIGUIENTE[p.estado]}" data-id="${p.id}">${p.estado === 'PENDIENTE' ? 'Confirmar' : 'Marcar: ' + ESTADOS[SIGUIENTE[p.estado]][0]}</button>` : ''}
         ${!['ENTREGADO', 'CANCELADO'].includes(p.estado) ? `<button class="pequeno peligro" data-estado="CANCELADO" data-id="${p.id}">Cancelar</button>` : ''}
-        <a class="boton pequeno" target="_blank" rel="noopener" href="https://wa.me/${telWa(p.telefono)}?text=${encodeURIComponent(`Hola ${p.nombreCliente}, te escribimos de Vivanet Colección sobre tu pedido ${p.numero}.`)}">WhatsApp</a>
+        <a class="boton pequeno" target="_blank" rel="noopener" href="https://wa.me/${telWa(p.telefono)}?text=${encodeURIComponent(`Hola ${p.nombreCliente}, te escribimos de ${negocio.nombreNegocio} sobre tu pedido ${p.numero}.`)}">WhatsApp</a>
       </div></article>`).join('') || '<div class="tarjeta vacio">No hay pedidos.</div>';
     $$('[data-estado]').forEach((b) => b.addEventListener('click', () => cambiarEstadoPedido(lista.find((p) => p.id === Number(b.dataset.id)), b.dataset.estado, cargar)));
     $$('[data-venta]').forEach((b) => b.addEventListener('click', () => intentar(() => verVenta(b.dataset.venta, cargar))));
   });
-  $('#filtro').addEventListener('change', cargar);
+  $$('[data-filtro]').forEach((b) => b.addEventListener('click', () => {
+    filtro = b.dataset.filtro;
+    $$('[data-filtro]').forEach((x) => x.setAttribute('aria-pressed', String(x === b)));
+    cargar();
+  }));
   await cargar();
 }
 
@@ -1153,7 +1353,7 @@ function cambiarEstadoPedido(p, estado, recargar) {
     recargar();
     actualizarContadorPedidos();
     if (estado === 'CONFIRMADO') {
-      const texto = `Hola ${p.nombreCliente}, ¡tu pedido ${p.numero} de Vivanet Colección fue confirmado! Total: ${cop(p.total)}. Coordinemos la fecha y hora de ${p.tipoEntrega === 'DOMICILIO' ? 'entrega' : 'recogida'}.`;
+      const texto = `Hola ${p.nombreCliente}, ¡tu pedido ${p.numero} de ${negocio.nombreNegocio} fue confirmado! Total: ${cop(p.total)}. Coordinemos la fecha y hora de ${p.tipoEntrega === 'DOMICILIO' ? 'entrega' : 'recogida'}.`;
       abrirModal('Pedido confirmado', `<p>Se creó la venta <strong>${actualizado.ventaNumero}</strong>. Avísale al cliente por WhatsApp:</p>
         <div class="modal-pie"><button data-cerrar>Ahora no</button><a class="boton primario" target="_blank" rel="noopener" href="https://wa.me/${telWa(p.telefono)}?text=${encodeURIComponent(texto)}">Enviar confirmación por WhatsApp</a></div>`);
     }
@@ -1170,39 +1370,44 @@ async function configuracion() {
   const check = (nombre, texto) => `<label class="check"><input type="checkbox" name="${nombre}" ${c[nombre] ? 'checked' : ''}> ${texto}</label>`;
   const campo = (nombre, texto, tipo = 'text', extra = '') => `<label>${texto} <input name="${nombre}" type="${tipo}" value="${esc(c[nombre] ?? '')}" ${extra}></label>`;
   vista().innerHTML = `
-    <div class="cabecera"><h1>Configuración</h1></div>
-    <form id="form-config">
-      <section class="tarjeta" style="margin-bottom:1em"><h2>Datos del negocio</h2><div class="campos">
+    <header class="cabecera"><div><h1>Configuración</h1><p class="sub">Datos del negocio, catálogo, metas y recibos</p></div></header>
+    <form id="form-config" style="display:flex;flex-direction:column;gap:20px">
+      <section class="tarjeta"><h2>Datos del negocio</h2><div class="campos">
         ${campo('nombreNegocio', 'Nombre comercial')}${campo('telefono', 'Teléfono', 'tel')}
         ${campo('whatsapp', 'WhatsApp que recibe pedidos', 'tel', 'placeholder="3001234567"')}${campo('correo', 'Correo', 'email')}
         ${campo('direccion', 'Dirección')}${campo('horarios', 'Horarios de atención', 'text', 'placeholder="Lun a Sáb 9:00 a.m. – 7:00 p.m."')}
         ${campo('instagram', 'Instagram (enlace)', 'url')}${campo('facebook', 'Facebook (enlace)', 'url')}${campo('tiktok', 'TikTok (enlace)', 'url')}
       </div></section>
-      <section class="tarjeta" style="margin-bottom:1em"><h2>Precios y entregas</h2><div class="campos">
+      <section class="tarjeta"><h2>Metas mensuales</h2><div class="campos">
+        <label>Meta de ventas del mes <input name="metaVentasMes" type="number" min="0" step="1000" data-numero value="${c.metaVentasMes || ''}" placeholder="Ej. 12000000"></label>
+        <label>Meta de utilidad del mes <input name="metaUtilidadMes" type="number" min="0" step="1000" data-numero value="${c.metaUtilidadMes || ''}" placeholder="Ej. 6000000"></label>
+      </div><p class="suave" style="margin:10px 0 0">El panel principal muestra el avance. Déjalas vacías si no quieres usar metas.</p></section>
+      <section class="tarjeta"><h2>Precios y entregas</h2><div class="campos">
         <label>Incremento sobre el costo (%) <input name="porcentajeIncremento" type="number" min="0" data-numero value="${c.porcentajeIncremento}"></label>
         <label>Costo fijo del domicilio <input name="costoDomicilio" type="number" min="0" data-numero value="${c.costoDomicilio}"></label>
-      </div><p class="suave">100% = el precio sugerido es el doble del costo. Se redondea al millar más cercano.</p></section>
-      <section class="tarjeta" style="margin-bottom:1em"><h2>Catálogo digital</h2>
+      </div><p class="suave" style="margin:10px 0 0">100 % = el precio sugerido es el doble del costo. Se redondea al millar más cercano.</p></section>
+      <section class="tarjeta"><h2>Catálogo digital</h2>
         <div class="fila">${check('catalogoHabilitado', 'Catálogo habilitado')}${check('mostrarAgotados', 'Mostrar productos agotados con etiqueta «Agotado» (si no, se ocultan)')}</div>
-        <div class="fila" style="margin-top:1em;align-items:flex-start">
+        <div class="fila" style="margin-top:1em;align-items:flex-start;gap:20px">
           <div id="qr"></div>
-          <div style="flex:1;min-width:220px">
-            <p>Enlace público: <a href="${urlCatalogo}" target="_blank" rel="noopener">${urlCatalogo}</a></p>
+          <div style="flex:1;min-width:220px;display:flex;flex-direction:column;gap:12px">
+            <p style="margin:0">Enlace público: <a href="${urlCatalogo}" target="_blank" rel="noopener">${urlCatalogo}</a></p>
             <div class="fila"><button type="button" id="copiar">Copiar enlace</button>
-              <a class="boton" target="_blank" rel="noopener" href="https://wa.me/?text=${encodeURIComponent('Mira nuestro catálogo de Vivanet Colección: ' + urlCatalogo)}">Compartir por WhatsApp</a>
-              <a class="boton" id="descargar-qr" download="catalogo-vivanet-qr.png">Descargar QR</a></div>
+              <a class="boton" target="_blank" rel="noopener" href="https://wa.me/?text=${encodeURIComponent('Mira el catálogo de ' + (c.nombreNegocio || negocio.nombreNegocio) + ': ' + urlCatalogo)}">Compartir por WhatsApp</a>
+              <a class="boton" id="descargar-qr" download="catalogo-vivanta-qr.png">Descargar QR</a></div>
           </div>
         </div>
       </section>
-      <section class="tarjeta" style="margin-bottom:1em"><h2>Recibos</h2>
+      <section class="tarjeta"><h2>Recibos</h2>
         <div class="fila">${check('reciboMostrarLogo', 'Logo')}${check('reciboMostrarDireccion', 'Dirección')}${check('reciboMostrarTelefono', 'Teléfono')}${check('reciboMostrarCliente', 'Datos del cliente')}</div>
         <label style="margin-top:.8em">Notas al pie del recibo <textarea name="notasRecibo">${esc(c.notasRecibo)}</textarea></label>
       </section>
       <div class="fila fin"><button class="primario">Guardar configuración</button></div>
     </form>
-    <section class="tarjeta" style="margin-top:1em"><h2>Logo (marquilla)</h2>
-      ${c.tieneLogo ? `<img src="/api/public/logo?${Date.now()}" alt="Logo" style="max-height:90px;margin-bottom:.8em;display:block">` : '<p class="suave">Aún no hay logo.</p>'}
-      <form id="form-logo" class="fila"><input type="file" name="archivo" accept="image/*" required style="flex:1"><button>Subir logo</button></form>
+    <section class="tarjeta"><h2>Logo</h2>
+      <p class="suave">El logo de Vivanta Colección ya viene incluido en la app, el catálogo y los recibos. Sube otro solo si quieres reemplazarlo.</p>
+      <img class="logo" src="${c.tieneLogo ? '/api/public/logo?' + Date.now() : '/img/logo-vivanta.png'}" alt="Logo actual" style="max-height:90px;max-width:240px;margin-bottom:1em">
+      <form id="form-logo" class="fila"><input type="file" name="archivo" accept="image/*" required style="flex:1"><button>Subir otro logo</button></form>
     </section>`;
 
   if (window.qrcode) {
@@ -1219,7 +1424,10 @@ async function configuracion() {
   $('#form-config').addEventListener('submit', (e) => {
     e.preventDefault();
     intentar(async () => {
-      await api('/api/configuracion', { metodo: 'PUT', datos: { ...leerFormulario(e.target), tieneLogo: c.tieneLogo } });
+      const datos = leerFormulario(e.target);
+      datos.metaVentasMes = datos.metaVentasMes ?? 0;
+      datos.metaUtilidadMes = datos.metaUtilidadMes ?? 0;
+      negocio = await api('/api/configuracion', { metodo: 'PUT', datos: { ...datos, tieneLogo: c.tieneLogo } });
       avisar('Configuración guardada');
     });
   });
@@ -1235,4 +1443,5 @@ async function configuracion() {
 }
 
 // ---------- Inicio ----------
+api('/api/configuracion').then((c) => { negocio = c; }).catch(() => {});
 navegar();

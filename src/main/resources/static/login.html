@@ -4,30 +4,32 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Ingresar · BeautyStock</title>
+  <link rel="icon" type="image/png" href="/img/favicon.png">
   <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=Nunito+Sans:wght@400;600;700&family=Playfair+Display:wght@600&display=swap" rel="stylesheet">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@600;700&family=Jost:wght@400;500;600&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/css/estilos.css">
   <style>
     body { min-height: 100vh; display: grid; place-items: center; padding: 16px;
-      background: radial-gradient(circle at 20% 10%, var(--rosa), transparent 50%), var(--fondo); }
-    .acceso { width: 100%; max-width: 380px; }
-    .acceso h1 { text-align: center; margin-bottom: .1em; }
-    .acceso p.sub { text-align: center; margin: 0 0 1.4em; color: var(--texto-suave); }
-    form { display: flex; flex-direction: column; gap: .9em; }
-    .mensaje { padding: .6em .8em; border-radius: 10px; font-size: .9rem; }
+      background: radial-gradient(circle at 15% 10%, var(--rosa), transparent 45%), radial-gradient(circle at 90% 95%, var(--amarillo), transparent 40%), var(--fondo); }
+    .acceso { width: 100%; max-width: 400px; padding: 32px; display: flex; flex-direction: column; gap: 20px; }
+    .acceso .logo { width: 200px; margin: 0 auto; }
+    .acceso .sub { text-align: center; margin: -8px 0 0; color: var(--texto-suave); }
+    form { display: flex; flex-direction: column; gap: 14px; }
+    .mensaje { padding: 10px 14px; border-radius: 12px; font-size: .9rem; margin: 0; }
     .mensaje.error { background: var(--peligro-fondo); color: var(--peligro); }
     .mensaje.ok { background: var(--exito-fondo); color: var(--exito); }
   </style>
 </head>
 <body>
   <main class="acceso tarjeta">
-    <h1 class="marca">Vivanet Colección</h1>
+    <img class="logo" src="/img/logo-vivanta.png" alt="Vivanta Colección" width="200" height="83">
     <p class="sub">BeautyStock · Administración</p>
     <div id="mensaje"></div>
     <form method="post" action="/login">
       <label>Usuario <input name="username" autocomplete="username" required autofocus></label>
       <label>Contraseña <input name="password" type="password" autocomplete="current-password" required></label>
-      <button class="primario" type="submit">Ingresar</button>
+      <button class="primario" type="submit" style="min-height:50px">Ingresar</button>
     </form>
   </main>
   <script>
@@ -35,7 +37,7 @@
     const caja = document.getElementById('mensaje');
     if (params.has('error')) caja.innerHTML = '<p class="mensaje error">Usuario o contraseña incorrectos.</p>';
     if (params.has('salio')) caja.innerHTML = '<p class="mensaje ok">Sesión cerrada.</p>';
-    if (params.has('expiro')) caja.innerHTML = '<p class="mensaje error">Tu sesión expiró por inactividad.</p>';
+    if (params.has('expiro')) caja.innerHTML = '<p class="mensaje error">Tu sesión se cerró por inactividad. Vuelve a ingresar.</p>';
   </script>
 </body>
 </html>

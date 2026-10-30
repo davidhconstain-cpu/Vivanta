@@ -27,7 +27,8 @@ src/main/java/com/vivanet/beautystock/
 └── config/       Seguridad (login) y rutas de las páginas
 
 src/main/resources/static/
-├── css/estilos.css      Paleta Vivanet, modo claro/oscuro
+├── css/estilos.css      Paleta y fuentes de Vivanta, modo claro/oscuro
+├── img/                 Logo, isotipo y favicon de Vivanta
 ├── login.html           Inicio de sesión
 ├── admin/               Panel de administración (index.html + app.js) y recibo
 └── catalogo/            Catálogo público con carrito y WhatsApp

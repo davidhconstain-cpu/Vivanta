@@ -1,6 +1,9 @@
 package com.vivanet.beautystock.service;
 
 import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
+import java.time.temporal.ChronoUnit;
+import java.util.Locale;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -65,33 +68,35 @@ public class PanelService {
         List<ProductoDto> activos = productos.listar(null, null, true);
         for (ProductoDto p : activos) {
             if (p.existencias() == 0) {
-                alertas.add(new AlertaDto("agotado", p.nombre() + " está agotado.", "inventario"));
+                alertas.add(new AlertaDto("agotado", p.nombre(), "Sin existencias", "Agotado", "inventario"));
             } else if (p.stockBajo()) {
-                alertas.add(new AlertaDto("stock", p.nombre() + ": quedan " + p.existencias()
-                        + " (mínimo " + p.stockMinimo() + ").", "inventario"));
+                alertas.add(new AlertaDto("stock", p.nombre(), "Quedan " + p.existencias() + " unidades · mínimo "
+                        + p.stockMinimo(), "Stock bajo", "inventario"));
             }
         }
         for (Venta v : porCobrar) {
             String quien = v.getCliente() != null ? v.getCliente().getNombre() : "Cliente";
             agregarVencimiento(alertas, v.getFechaVencimiento(), hoy,
-                    quien + " — " + v.getNumero() + " (saldo " + Pesos.formato(v.getSaldo()) + ")", "ventas");
+                    quien + " debe " + Pesos.formato(v.getSaldo()), "Venta " + v.getNumero(), "ventas");
         }
         for (Compra c : porPagar) {
-            String quien = c.getProveedor() != null ? c.getProveedor() : "Proveedor";
-            agregarVencimiento(alertas, c.getFechaVencimiento(), hoy,
-                    "Pago a " + quien + " — " + c.getNumero() + " (saldo " + Pesos.formato(c.getSaldo()) + ")", "compras");
+            agregarVencimiento(alertas, c.getFechaVencimiento(), hoy, "Pago a proveedor " + c.getNumero(),
+                    "Saldo " + Pesos.formato(c.getSaldo()) + (c.getProveedor() != null ? " · " + c.getProveedor() : ""),
+                    "compras");
         }
         long pendientes = pedidos.countByEstado(EstadoPedido.PENDIENTE);
         if (pendientes > 0) {
-            alertas.add(0, new AlertaDto("pedido", pendientes + " pedido(s) del catálogo por confirmar.", "pedidos"));
+            alertas.add(0, new AlertaDto("pedido", pendientes + " pedido(s) del catálogo por confirmar",
+                    "Las unidades quedan reservadas hasta que confirmes o canceles", "Nuevo", "pedidos"));
         }
-        String whatsapp = configuracion.obtener().getWhatsapp();
-        boolean whatsappConfigurado = whatsapp != null && !whatsapp.isBlank();
+        Configuracion config = configuracion.obtener();
+        boolean whatsappConfigurado = config.getWhatsapp() != null && !config.getWhatsapp().isBlank();
         if (!whatsappConfigurado) {
-            alertas.add(0, new AlertaDto("vencido",
-                    "Falta el número de WhatsApp: el catálogo no puede recibir pedidos. Configúralo aquí.",
-                    "configuracion"));
+            alertas.add(0, new AlertaDto("vencido", "Falta el número de WhatsApp",
+                    "El catálogo no puede recibir pedidos. Configúralo aquí.", "Pendiente", "configuracion"));
         }
+        long clientesConSaldo = porCobrar.stream().filter(v -> v.getCliente() != null)
+                .map(v -> v.getCliente().getId()).distinct().count();
 
         return new PanelDto(
                 deHoy.stream().mapToLong(Venta::getTotal).sum(),
@@ -101,7 +106,8 @@ public class PanelService {
                 delMes.stream().mapToLong(Venta::getUtilidad).sum(),
                 porCobrar.stream().mapToLong(Venta::getSaldo).sum(),
                 porPagar.stream().mapToLong(Compra::getSaldo).sum(),
-                unidades, valor, pendientes, alertas, whatsappConfigurado, activos.size());
+                unidades, valor, pendientes, alertas, whatsappConfigurado, activos.size(),
+                config.getMetaVentasMes(), config.getMetaUtilidadMes(), clientesConSaldo);
     }
 
     /** Productos para el catalogo publico (solo activos; agotados segun la configuracion). */
@@ -122,15 +128,18 @@ public class PanelService {
     }
 
     /** Aviso tres dias antes del vencimiento y cuando ya esta vencido. */
-    private static void agregarVencimiento(List<AlertaDto> alertas, LocalDate vence, LocalDate hoy, String texto,
-            String vista) {
+    private static void agregarVencimiento(List<AlertaDto> alertas, LocalDate vence, LocalDate hoy, String titulo,
+            String detalle, String vista) {
         if (vence == null) {
             return;
         }
+        String fecha = vence.format(DateTimeFormatter.ofPattern("d 'de' MMMM", Locale.of("es", "CO")));
         if (vence.isBefore(hoy)) {
-            alertas.add(new AlertaDto("vencido", "Vencido: " + texto, vista));
+            alertas.add(new AlertaDto("vencido", titulo, detalle + " · venció el " + fecha, "Vencido", vista));
         } else if (!vence.isAfter(hoy.plusDays(3))) {
-            alertas.add(new AlertaDto("por-vencer", "Vence el " + vence.format(java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy")) + ": " + texto, vista));
+            long dias = ChronoUnit.DAYS.between(hoy, vence);
+            String cuando = dias == 0 ? "Hoy" : dias == 1 ? "Mañana" : "En " + dias + " días";
+            alertas.add(new AlertaDto("por-vencer", titulo, detalle + " · vence el " + fecha, cuando, vista));
         }
     }
 

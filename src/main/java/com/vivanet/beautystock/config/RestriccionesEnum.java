@@ -10,6 +10,7 @@ import org.springframework.stereotype.Component;
 
 import com.vivanet.beautystock.entity.EstadoPedido;
 import com.vivanet.beautystock.entity.EstadoVenta;
+import com.vivanet.beautystock.entity.FormaPagoPedido;
 import com.vivanet.beautystock.entity.MetodoPago;
 import com.vivanet.beautystock.entity.TipoDescuento;
 import com.vivanet.beautystock.entity.TipoEntrega;
@@ -37,6 +38,7 @@ public class RestriccionesEnum implements ApplicationRunner {
         actualizar("pagos_venta", "metodo", MetodoPago.class);
         actualizar("pedidos", "estado", EstadoPedido.class);
         actualizar("pedidos", "tipo_entrega", TipoEntrega.class);
+        actualizar("pedidos", "forma_pago", FormaPagoPedido.class);
         actualizar("ventas", "estado", EstadoVenta.class);
         actualizar("ventas", "descuento_tipo", TipoDescuento.class);
         actualizar("venta_items", "descuento_tipo", TipoDescuento.class);

@@ -20,6 +20,7 @@ import com.vivanet.beautystock.entity.Cliente;
 import com.vivanet.beautystock.entity.Configuracion;
 import com.vivanet.beautystock.entity.EstadoPedido;
 import com.vivanet.beautystock.entity.EstadoVenta;
+import com.vivanet.beautystock.entity.FormaPagoPedido;
 import com.vivanet.beautystock.entity.Pedido;
 import com.vivanet.beautystock.entity.PedidoItem;
 import com.vivanet.beautystock.entity.Producto;
@@ -74,6 +75,7 @@ public class PedidoService {
         pedido.setNombreCliente(datos.nombre().trim());
         pedido.setTelefono(datos.telefono().trim());
         pedido.setTipoEntrega(datos.tipoEntrega());
+        pedido.setFormaPago(datos.formaPago() != null ? datos.formaPago() : FormaPagoPedido.CONTRA_ENTREGA);
         pedido.setDireccion(CompraService.textoOpcional(datos.direccion()));
         pedido.setObservaciones(CompraService.textoOpcional(datos.observaciones()));
 
@@ -170,6 +172,8 @@ public class PedidoService {
         m.append("\nTotal: ").append(Pesos.formato(p.getTotal())).append("\n");
         m.append("Nombre: ").append(p.getNombreCliente()).append("\n");
         m.append("Entrega: ").append(p.getTipoEntrega() == TipoEntrega.DOMICILIO ? "Domicilio" : "Recoger").append("\n");
+        m.append("Pago: ").append(p.getFormaPago() == FormaPagoPedido.ANTICIPADO
+                ? "Anticipado por transferencia o Nequi" : "Al recibir o recoger").append("\n");
         if (p.getDireccion() != null) {
             m.append("Dirección: ").append(p.getDireccion()).append("\n");
         }
@@ -185,7 +189,8 @@ public class PedidoService {
                         i.getPrecioUnitario(), i.getTotal()))
                 .toList();
         return new PedidoDto(p.getId(), p.getNumero(), p.getFechaHora(), p.getNombreCliente(), p.getTelefono(),
-                p.getTipoEntrega(), p.getDireccion(), p.getObservaciones(), p.getSubtotal(), p.getCostoDomicilio(),
+                p.getTipoEntrega(), p.getFormaPago(), p.getDireccion(), p.getObservaciones(), p.getSubtotal(),
+                p.getCostoDomicilio(),
                 p.getTotal(), p.getEstado(), p.getVenta() != null ? p.getVenta().getId() : null,
                 p.getVenta() != null ? p.getVenta().getNumero() : null, items);
     }

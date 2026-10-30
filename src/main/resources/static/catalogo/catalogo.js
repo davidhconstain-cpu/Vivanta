@@ -1,30 +1,31 @@
 // =====================================================================
-// Catalogo publico de Vivanet Coleccion
-// Los clientes eligen productos, arman el carrito y envian el pedido
-// por WhatsApp. El pedido queda registrado como "pendiente".
+// Catalogo publico de Vivanta Coleccion
+// Dos pantallas: la lista de productos (#) y "Tu pedido" (#pedido).
+// El pedido se envia por WhatsApp y queda registrado como "pendiente".
 // =====================================================================
 
 const $ = (s, r = document) => r.querySelector(s);
+const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const cop = (n) => '$' + Math.round(n || 0).toLocaleString('es-CO');
 const esc = (t) => String(t ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const telWa = (t) => { const d = String(t || '').replace(/\D/g, ''); return d.length === 10 ? '57' + d : d; };
+const normalizar = (t) => String(t || '').normalize('NFD').replace(/\p{M}/gu, '').toLowerCase();
+const foto = (p) => p.imagenes.length ? `/api/public/imagenes/${p.imagenes[0]}` : '/img/isotipo-vivanta.png';
 
 let catalogo = null;
 let categoria = '';
-let carrito = cargarCarrito();   // { productoId: cantidad }
-let datosCliente = cargarDatos(); // nombre, telefono, direccion... (se recuerdan en este navegador)
+let busqueda = '';
+let carrito = cargar('vivanta-carrito', {});        // { productoId: cantidad }
+let datosCliente = cargar('vivanta-cliente', {});   // nombre, telefono, direccion, entrega, formaPago...
 
-function cargarCarrito() {
-  try { return JSON.parse(localStorage.getItem('vivanet-carrito')) || {}; } catch { return {}; }
-}
-function cargarDatos() {
-  try { return JSON.parse(localStorage.getItem('vivanet-cliente')) || {}; } catch { return {}; }
+function cargar(clave, inicial) {
+  try { return JSON.parse(localStorage.getItem(clave)) || inicial; } catch { return inicial; }
 }
 function guardar() {
   try {
-    localStorage.setItem('vivanet-carrito', JSON.stringify(carrito));
-    localStorage.setItem('vivanet-cliente', JSON.stringify(datosCliente));
-  } catch { /* sin almacenamiento: el carrito vive solo en esta pagina */ }
+    localStorage.setItem('vivanta-carrito', JSON.stringify(carrito));
+    localStorage.setItem('vivanta-cliente', JSON.stringify(datosCliente));
+  } catch { /* sin almacenamiento: el pedido vive solo en esta pagina */ }
 }
 
 function avisar(texto, tipo = '') {
@@ -35,107 +36,122 @@ function avisar(texto, tipo = '') {
   setTimeout(() => caja.remove(), 4000);
 }
 
+const producto = (id) => catalogo.productos.find((p) => p.id === Number(id));
+const lineas = () => Object.entries(carrito).map(([id, cantidad]) => ({ p: producto(id), cantidad })).filter((l) => l.p);
+
 async function iniciar() {
   try {
-    const r = await fetch('/api/public/catalogo');
-    catalogo = await r.json();
+    catalogo = await (await fetch('/api/public/catalogo')).json();
   } catch {
     $('#principal').innerHTML = '<p class="vacio">No pudimos cargar el catálogo. Intenta de nuevo en un momento.</p>';
     return;
   }
   const n = catalogo.negocio;
   document.title = 'Catálogo · ' + n.nombreNegocio;
-  $('#portada').innerHTML = `${n.tieneLogo ? `<img src="/api/public/logo" alt="${esc(n.nombreNegocio)}">` : ''}
-    <h1>${esc(n.nombreNegocio)}</h1><p>Belleza que te acompaña · Haz tu pedido por WhatsApp</p>`;
+  if (n.tieneLogo) $$('.logo').forEach((img) => { img.src = '/api/public/logo'; });
   dibujarPie(n);
 
-  if (!catalogo.habilitado) {
-    $('#principal').innerHTML = `<div class="tarjeta mantenimiento">
-      <h2>Catálogo en mantenimiento</h2>
-      <p>Estamos actualizando nuestros productos. Escríbenos y con gusto te atendemos.</p>
-      ${n.horarios ? `<p><strong>Horarios:</strong> ${esc(n.horarios)}</p>` : ''}
-      ${n.whatsapp ? `<a class="boton whatsapp" target="_blank" rel="noopener" href="https://wa.me/${telWa(n.whatsapp)}">Escribir por WhatsApp</a>` : ''}
-    </div>`;
-    return;
-  }
+  // Quita del pedido productos que ya no existen.
+  for (const id of Object.keys(carrito)) if (!producto(id)) delete carrito[id];
+  window.addEventListener('hashchange', mostrar);
+  mostrar();
+}
 
-  // Quita del carrito productos que ya no existen.
-  for (const id of Object.keys(carrito)) {
-    if (!catalogo.productos.some((p) => p.id === Number(id))) delete carrito[id];
-  }
-  const categorias = [...new Set(catalogo.productos.map((p) => p.categoria).filter(Boolean))].sort();
-  $('#principal').innerHTML = `
-    <div class="filtros">
-      <input type="search" id="buscar" placeholder="Buscar producto o marca">
-      <div class="chips" id="chips">
-        <button class="chip activo" data-cat="">Todo</button>
-        ${categorias.map((c) => `<button class="chip" data-cat="${esc(c)}">${esc(c)}</button>`).join('')}
-      </div>
-    </div>
-    <div class="grilla" id="grilla"></div>`;
-  $('#buscar').addEventListener('input', dibujarProductos);
-  $('#chips').addEventListener('click', (e) => {
-    const b = e.target.closest('[data-cat]');
-    if (!b) return;
-    categoria = b.dataset.cat;
-    document.querySelectorAll('.chip').forEach((c) => c.classList.toggle('activo', c === b));
-    dibujarProductos();
-  });
-  dibujarProductos();
-  actualizarBoton();
+function mostrar() {
+  if (!catalogo.habilitado) return mantenimiento();
+  if (location.hash === '#pedido' && lineas().length) pantallaPedido();
+  else pantallaProductos();
+  window.scrollTo(0, 0);
+}
+
+function mantenimiento() {
+  const n = catalogo.negocio;
+  $('#barra-pedido').hidden = true;
+  $('#principal').innerHTML = `<div class="tarjeta mantenimiento">
+    <h1 style="font-size:2rem;margin:0">Catálogo en mantenimiento</h1>
+    <p style="margin:0">Estamos actualizando nuestros productos. Escríbenos y con gusto te atendemos.</p>
+    ${n.horarios ? `<p style="margin:0"><strong>Horarios:</strong> ${esc(n.horarios)}</p>` : ''}
+    ${n.whatsapp ? `<a class="boton primario" target="_blank" rel="noopener" href="https://wa.me/${telWa(n.whatsapp)}">Escribir por WhatsApp</a>` : ''}
+  </div>`;
 }
 
 function dibujarPie(n) {
   const redes = [['Instagram', n.instagram], ['Facebook', n.facebook], ['TikTok', n.tiktok]].filter(([, u]) => u);
   $('#pie').innerHTML = `
-    <div class="marca" style="font-size:1.3rem">${esc(n.nombreNegocio)}</div>
-    ${n.horarios ? `<p>🕒 ${esc(n.horarios)}</p>` : ''}
-    ${n.direccion ? `<p>📍 ${esc(n.direccion)}</p>` : ''}
-    ${n.telefono ? `<p>📞 ${esc(n.telefono)}</p>` : ''}
+    <img class="logo" src="${n.tieneLogo ? '/api/public/logo' : '/img/logo-vivanta.png'}" alt="${esc(n.nombreNegocio)}">
+    ${n.horarios ? `<p>${esc(n.horarios)}</p>` : ''}
+    ${n.direccion ? `<p>${esc(n.direccion)}</p>` : ''}
+    ${n.telefono ? `<p>Tel. ${esc(n.telefono)}</p>` : ''}
     <div class="redes">
       ${n.whatsapp ? `<a class="boton" target="_blank" rel="noopener" href="https://wa.me/${telWa(n.whatsapp)}">WhatsApp</a>` : ''}
       ${redes.map(([nombre, url]) => `<a class="boton" target="_blank" rel="noopener" href="${esc(url)}">${nombre}</a>`).join('')}
       <button type="button" id="compartir">Compartir catálogo</button>
     </div>`;
-  $('#compartir').addEventListener('click', async () => {
+  $('#compartir').addEventListener('click', () => {
     const url = location.origin + '/catalogo/';
-    if (navigator.share) {
-      navigator.share({ title: n.nombreNegocio, url }).catch(() => {});
-    } else {
-      window.open('https://wa.me/?text=' + encodeURIComponent('Mira el catálogo de ' + n.nombreNegocio + ': ' + url), '_blank', 'noopener');
-    }
+    if (navigator.share) navigator.share({ title: n.nombreNegocio, url }).catch(() => {});
+    else window.open('https://wa.me/?text=' + encodeURIComponent('Mira el catálogo de ' + n.nombreNegocio + ': ' + url), '_blank', 'noopener');
   });
 }
 
-function normalizar(t) {
-  return String(t || '').normalize('NFD').replace(/\p{M}/gu, '').toLowerCase();
+// ---------- Pantalla 1: productos ----------
+
+function pantallaProductos() {
+  const categorias = [...new Set(catalogo.productos.map((p) => p.categoria).filter(Boolean))].sort();
+  $('#principal').innerHTML = `
+    <div class="contenedor">
+      <div class="filtros">
+        <label for="buscar" style="position:absolute;left:-9999px">Buscar productos</label>
+        <input id="buscar" type="search" placeholder="Buscar productos" value="${esc(busqueda)}">
+        <div class="chips" role="group" aria-label="Categorías">
+          <button type="button" data-cat="" aria-pressed="${!categoria}">Todos</button>
+          ${categorias.map((c) => `<button type="button" data-cat="${esc(c)}" aria-pressed="${c === categoria}">${esc(c)}</button>`).join('')}
+        </div>
+      </div>
+      <div class="grilla" id="grilla"></div>
+    </div>`;
+  $('#buscar').addEventListener('input', (e) => { busqueda = e.target.value; dibujarGrilla(); });
+  $('.chips').addEventListener('click', (e) => {
+    const b = e.target.closest('[data-cat]');
+    if (!b) return;
+    categoria = b.dataset.cat;
+    $$('[data-cat]').forEach((x) => x.setAttribute('aria-pressed', String(x === b)));
+    dibujarGrilla();
+  });
+  dibujarGrilla();
 }
 
-function dibujarProductos() {
-  const texto = normalizar($('#buscar').value);
+function dibujarGrilla() {
+  const texto = normalizar(busqueda);
   const lista = catalogo.productos.filter((p) => (!categoria || p.categoria === categoria)
-    && normalizar(p.nombre + ' ' + p.marca + ' ' + (p.categoria || '')).includes(texto));
+    && normalizar(`${p.nombre} ${p.marca} ${p.categoria || ''}`).includes(texto));
   $('#grilla').innerHTML = lista.map((p) => {
     const agotado = p.disponible <= 0;
-    const enCarrito = carrito[p.id] || 0;
+    const enPedido = carrito[p.id] || 0;
     return `<article class="producto ${agotado ? 'agotado' : ''}">
-      <button class="foto" data-detalle="${p.id}" aria-label="Ver ${esc(p.nombre)}">
-        ${p.imagenes.length ? `<img src="/api/public/imagenes/${p.imagenes[0]}" alt="${esc(p.nombre)}" loading="lazy">` : `<div class="sin-foto">${esc(p.nombre.charAt(0))}</div>`}
+      <button type="button" class="foto" data-detalle="${p.id}" aria-label="Ver ${esc(p.nombre)}">
+        <img src="${foto(p)}" alt="" loading="lazy">
         ${agotado ? '<span class="etiqueta agotado">Agotado</span>' : ''}
       </button>
-      <div class="info">
-        <span class="marca-prod">${esc(p.marca)}</span>
-        <span class="nombre">${esc(p.nombre)}</span>
-        <span class="precio">${cop(p.precio)}</span>
-        ${agotado ? '<button disabled>Agotado</button>'
-          : enCarrito ? `<div class="cantidad" style="display:flex;justify-content:space-between"><button data-menos="${p.id}" aria-label="Quitar uno">−</button><strong title="En tu pedido">${enCarrito} 🛍️</strong><button data-mas="${p.id}" aria-label="Agregar uno">+</button></div>`
-          : `<button class="primario" data-mas="${p.id}" style="justify-content:center">Agregar</button>`}
-      </div></article>`;
+      <h2>${esc(p.nombre)}</h2>
+      <p class="marca-prod" style="margin:0 4px">${esc(p.marca)}</p>
+      <p class="precio" style="margin:0 4px">${cop(p.precio)}</p>
+      <div class="acciones">
+        ${agotado ? '<button type="button" disabled>No disponible</button>'
+          : enPedido ? `<div class="stepper"><button type="button" data-menos="${p.id}" aria-label="Quitar una unidad">−</button><output>${enPedido}</output><button type="button" class="mas" data-mas="${p.id}" aria-label="Agregar una unidad">+</button></div>`
+          : `<button type="button" class="contorno" data-mas="${p.id}">Agregar</button>`}
+      </div>
+    </article>`;
   }).join('') || '<p class="vacio" style="grid-column:1/-1">No encontramos productos.</p>';
+  actualizarBarra();
 }
 
-function producto(id) {
-  return catalogo.productos.find((p) => p.id === Number(id));
+function actualizarBarra() {
+  const ls = lineas();
+  const unidades = ls.reduce((s, l) => s + l.cantidad, 0);
+  $('#barra-pedido').hidden = unidades === 0 || location.hash === '#pedido';
+  $('#barra-cuenta').textContent = `Ver pedido · ${unidades} ${unidades === 1 ? 'unidad' : 'unidades'}`;
+  $('#barra-total').textContent = cop(ls.reduce((s, l) => s + l.cantidad * l.p.precio, 0));
 }
 
 function cambiarCantidad(id, delta) {
@@ -148,9 +164,11 @@ function cambiarCantidad(id, delta) {
   if (nueva <= 0) delete carrito[id];
   else carrito[id] = nueva;
   guardar();
-  dibujarProductos();
-  actualizarBoton();
-  if ($('#panel-carrito').classList.contains('abierto')) dibujarCarrito();
+  if (location.hash === '#pedido') {
+    if (lineas().length) pantallaPedido(); else location.hash = '';
+  } else {
+    dibujarGrilla();
+  }
 }
 
 document.addEventListener('click', (e) => {
@@ -167,71 +185,64 @@ function verDetalle(p) {
   fondo.className = 'modal-fondo';
   fondo.innerHTML = `<div class="modal">
     <div class="modal-cabecera"><h2>${esc(p.nombre)}</h2><button class="icono" data-cerrar aria-label="Cerrar">✕</button></div>
-    ${p.imagenes.length ? `<div class="detalle-fotos">${p.imagenes.map((i) => `<img src="/api/public/imagenes/${i}" alt="">`).join('')}</div>` : ''}
+    <div class="detalle-fotos">${p.imagenes.length ? p.imagenes.map((i) => `<img src="/api/public/imagenes/${i}" alt="">`).join('') : `<img src="${foto(p)}" alt="">`}</div>
     <p class="suave">${esc(p.marca)}${p.categoria ? ' · ' + esc(p.categoria) : ''}</p>
     ${p.descripcion ? `<p style="white-space:pre-line">${esc(p.descripcion)}</p>` : ''}
-    <p class="marca" style="font-size:1.4rem">${cop(p.precio)}</p>
+    <p class="cifra" style="font-size:2rem;margin:0">${cop(p.precio)}</p>
     <div class="modal-pie">${p.disponible > 0 ? `<button class="primario" data-mas="${p.id}" data-cerrar>Agregar al pedido</button>` : '<span class="etiqueta agotado">Agotado</span>'}</div>
   </div>`;
   fondo.addEventListener('click', (e) => { if (e.target === fondo || e.target.closest('[data-cerrar]')) fondo.remove(); });
   document.body.append(fondo);
 }
 
-function lineas() {
-  return Object.entries(carrito).map(([id, cantidad]) => ({ p: producto(id), cantidad })).filter((l) => l.p);
-}
+// ---------- Pantalla 2: tu pedido ----------
 
-function actualizarBoton() {
+function pantallaPedido() {
+  const n = catalogo.negocio;
   const ls = lineas();
-  const unidades = ls.reduce((s, l) => s + l.cantidad, 0);
-  $('#abrir-carrito').hidden = unidades === 0;
-  $('#cuenta').textContent = unidades;
-  $('#total-boton').textContent = cop(ls.reduce((s, l) => s + l.cantidad * l.p.precio, 0));
-}
-
-function abrirCarrito(abrir) {
-  $('#panel-carrito').classList.toggle('abierto', abrir);
-  $('#fondo-panel').hidden = !abrir;
-  if (abrir) dibujarCarrito();
-}
-$('#abrir-carrito').addEventListener('click', () => abrirCarrito(true));
-$('#cerrar-carrito').addEventListener('click', () => abrirCarrito(false));
-$('#fondo-panel').addEventListener('click', () => abrirCarrito(false));
-
-function dibujarCarrito() {
-  const ls = lineas();
-  const domicilioCosto = catalogo.negocio.costoDomicilio;
   const entrega = datosCliente.entrega || 'RECOGIDA';
+  const formaPago = datosCliente.formaPago || 'ANTICIPADO';
   const subtotal = ls.reduce((s, l) => s + l.cantidad * l.p.precio, 0);
-  const domicilio = entrega === 'DOMICILIO' ? domicilioCosto : 0;
-  if (!ls.length) {
-    $('#cuerpo-carrito').innerHTML = '<p class="vacio">Tu pedido está vacío.</p>';
-    return;
-  }
-  $('#cuerpo-carrito').innerHTML = `
-    ${ls.map(({ p, cantidad }) => `<div class="linea">
-      ${p.imagenes.length ? `<img src="/api/public/imagenes/${p.imagenes[0]}" alt="">` : '<div class="ph"></div>'}
-      <div><strong>${esc(p.nombre)}</strong><br><span class="suave">${cop(p.precio)} c/u</span><br>
-        <span class="cantidad"><button data-menos="${p.id}" aria-label="Quitar uno">−</button>${cantidad}<button data-mas="${p.id}" aria-label="Agregar uno">+</button></span></div>
-      <strong>${cop(cantidad * p.precio)}</strong></div>`).join('')}
-    <form id="form-pedido" style="display:flex;flex-direction:column;gap:.7em">
-      <div class="entrega">
-        <label><input type="radio" name="entrega" value="RECOGIDA" ${entrega === 'RECOGIDA' ? 'checked' : ''}> Recoger</label>
-        <label><input type="radio" name="entrega" value="DOMICILIO" ${entrega === 'DOMICILIO' ? 'checked' : ''}> Domicilio${domicilioCosto ? ' (' + cop(domicilioCosto) + ')' : ''}</label>
+  const domicilio = entrega === 'DOMICILIO' ? n.costoDomicilio : 0;
+  const opcion = (nombre, valor, texto, elegida) => `<label class="opcion"><input type="radio" name="${nombre}" value="${valor}" ${valor === elegida ? 'checked' : ''}>${texto}</label>`;
+  $('#barra-pedido').hidden = true;
+  $('#principal').innerHTML = `
+    <form class="pedido" id="form-pedido">
+      <header>
+        <a class="volver" href="#">← Seguir comprando</a>
+        <h1>Tu pedido</h1>
+      </header>
+      <section class="tarjeta" style="padding:0">
+        <ul class="items">${ls.map(({ p, cantidad }) => `<li>
+          <img src="${foto(p)}" alt="">
+          <div class="texto"><strong>${esc(p.nombre)}</strong><span>${cantidad} × ${cop(p.precio)}</span>
+            <div class="quitar"><button type="button" data-menos="${p.id}" aria-label="Quitar una unidad">−</button><button type="button" data-mas="${p.id}" aria-label="Agregar una unidad">+</button></div></div>
+          <strong>${cop(cantidad * p.precio)}</strong>
+        </li>`).join('')}</ul>
+      </section>
+      <fieldset class="opciones"><legend>¿Cómo lo recibes?</legend>
+        ${opcion('entrega', 'RECOGIDA', 'Recoger', entrega)}
+        ${opcion('entrega', 'DOMICILIO', 'Domicilio' + (n.costoDomicilio ? ' (' + cop(n.costoDomicilio) + ')' : ''), entrega)}
+      </fieldset>
+      <div style="display:flex;flex-direction:column;gap:12px">
+        <label>Nombre <input name="nombre" required value="${esc(datosCliente.nombre)}" autocomplete="name"></label>
+        <label>Teléfono <input name="telefono" type="tel" required value="${esc(datosCliente.telefono)}" placeholder="Ej. 300 000 0000" autocomplete="tel"></label>
+        ${entrega === 'DOMICILIO' ? `<label>Dirección (obligatoria para domicilio) <input name="direccion" required value="${esc(datosCliente.direccion)}" placeholder="Calle, número, barrio" autocomplete="street-address"></label>` : ''}
+        <label>Observaciones (opcional) <textarea name="observaciones" rows="3" placeholder="Tono, referencia, horario preferido…">${esc(datosCliente.observaciones)}</textarea></label>
       </div>
-      <label>Nombre * <input name="nombre" required value="${esc(datosCliente.nombre)}" autocomplete="name"></label>
-      <label>Teléfono (WhatsApp) * <input name="telefono" type="tel" required value="${esc(datosCliente.telefono)}" autocomplete="tel"></label>
-      ${entrega === 'DOMICILIO' ? `<label>Dirección de entrega * <input name="direccion" required value="${esc(datosCliente.direccion)}" autocomplete="street-address"></label>` : ''}
-      <label>Observaciones <textarea name="observaciones" placeholder="Tono, referencia, horario preferido…">${esc(datosCliente.observaciones)}</textarea></label>
-      <div class="resumen">
-        <span>Productos</span><span>${cop(subtotal)}</span>
-        ${domicilio ? `<span>Domicilio</span><span>${cop(domicilio)}</span>` : ''}
-        <span class="total">Total</span><span class="total">${cop(subtotal + domicilio)}</span>
-      </div>
-      <p class="suave" style="margin:0;font-size:.85rem">Puedes pagar por transferencia o Nequi por anticipado, o al recibir/recoger. Coordinaremos la entrega por WhatsApp.</p>
-      ${catalogo.negocio.whatsapp
-        ? '<button class="boton whatsapp" id="enviar">Enviar pedido por WhatsApp</button>'
-        : '<p class="aviso error" style="margin:0">Por ahora no podemos recibir pedidos en línea. Vuelve pronto.</p>'}
+      <fieldset class="opciones columna"><legend>Forma de pago</legend>
+        ${opcion('formaPago', 'ANTICIPADO', 'Pago anticipado por transferencia o Nequi', formaPago)}
+        ${opcion('formaPago', 'CONTRA_ENTREGA', 'Pagar al recibir o recoger', formaPago)}
+      </fieldset>
+      <section class="tarjeta resumen-pedido">
+        <div><span class="suave">Subtotal</span><span>${cop(subtotal)}</span></div>
+        ${domicilio ? `<div><span class="suave">Domicilio</span><span>${cop(domicilio)}</span></div>` : ''}
+        <div class="total"><span style="font-weight:600">Total</span><span>${cop(subtotal + domicilio)}</span></div>
+      </section>
+      ${n.whatsapp
+        ? '<button class="primario whatsapp" id="enviar">Enviar pedido por WhatsApp</button>'
+        : '<div class="aviso-caja peligro">Por ahora no podemos recibir pedidos en línea. Vuelve pronto.</div>'}
+      <p class="nota">No necesitas crear una cuenta. La fecha y hora de entrega o recogida se coordinan por WhatsApp cuando confirmemos tu pedido.</p>
     </form>`;
   const form = $('#form-pedido');
   form.addEventListener('input', () => {
@@ -239,10 +250,10 @@ function dibujarCarrito() {
     guardar();
   });
   form.addEventListener('change', (e) => {
-    if (e.target.name === 'entrega') {
-      datosCliente.entrega = e.target.value;
+    if (e.target.name === 'entrega' || e.target.name === 'formaPago') {
+      datosCliente[e.target.name] = e.target.value;
       guardar();
-      dibujarCarrito();
+      if (e.target.name === 'entrega') pantallaPedido();
     }
   });
   form.addEventListener('submit', enviarPedido);
@@ -262,7 +273,9 @@ async function enviarPedido(e) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         nombre: form.nombre.value, telefono: form.telefono.value,
-        tipoEntrega: datosCliente.entrega || 'RECOGIDA', direccion: form.direccion?.value || null,
+        tipoEntrega: datosCliente.entrega || 'RECOGIDA',
+        formaPago: datosCliente.formaPago || 'ANTICIPADO',
+        direccion: form.direccion?.value || null,
         observaciones: form.observaciones.value || null,
         items: lineas().map((l) => ({ productoId: l.p.id, cantidad: l.cantidad })),
       }),
@@ -274,14 +287,14 @@ async function enviarPedido(e) {
     carrito = {};
     datosCliente.observaciones = '';
     guardar();
-    actualizarBoton();
-    $('#cuerpo-carrito').innerHTML = `<div class="vacio"><h2>¡Pedido ${esc(respuesta.numero)} enviado! 💖</h2>
-      <p>Total ${cop(respuesta.total)}. Si WhatsApp no se abrió, <a href="${esc(respuesta.whatsappUrl)}" target="_blank" rel="noopener">toca aquí</a>.</p>
-      <p>Te confirmaremos por WhatsApp.</p></div>`;
-    // Recarga existencias
-    const nuevo = await fetch('/api/public/catalogo').then((x) => x.json());
-    catalogo.productos = nuevo.productos;
-    dibujarProductos();
+    $('#principal').innerHTML = `<div class="pedido"><section class="tarjeta" style="text-align:center;display:flex;flex-direction:column;gap:10px">
+      <h1>¡Pedido ${esc(respuesta.numero)} enviado!</h1>
+      <p style="margin:0">Total ${cop(respuesta.total)}. Si WhatsApp no se abrió, <a href="${esc(respuesta.whatsappUrl)}" target="_blank" rel="noopener">toca aquí</a>.</p>
+      <p class="suave" style="margin:0">Te confirmaremos por WhatsApp.</p>
+      <a class="boton contorno" href="#">Volver al catálogo</a>
+    </section></div>`;
+    // Recarga existencias para el siguiente pedido
+    catalogo.productos = (await (await fetch('/api/public/catalogo')).json()).productos;
   } catch (error) {
     if (ventana) ventana.close();
     avisar(error.message, 'error');
