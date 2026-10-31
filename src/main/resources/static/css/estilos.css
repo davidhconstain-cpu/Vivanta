@@ -35,32 +35,6 @@
   color-scheme: light;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
-    --marca: #E07784;
-    --principal: #E07784;
-    --principal-hover: #EA8D98;
-    --sobre-principal: #24181B;
-    --rosa: #4A2F35;
-    --amarillo: #3F3A1C;
-    --fondo: #1C1517;
-    --superficie: #271E21;
-    --superficie-2: #30252A;
-    --borde: #44363B;
-    --borde-campo: #5A484E;
-    --linea: #3A2E33;
-    --texto: #F2F0EB;
-    --texto-suave: #C2B2B6;
-    --exito: #6FCF9A;
-    --exito-fondo: #1F3A2C;
-    --peligro: #F08A7E;
-    --peligro-fondo: #4A2420;
-    --aviso: #F3E48A;
-    --aviso-fondo: #3F3A1C;
-    --sombra: 0 1px 2px rgba(0, 0, 0, .3), 0 6px 20px rgba(0, 0, 0, .25);
-    color-scheme: dark;
-  }
-}
 
 :root[data-theme="dark"] {
   --marca: #E07784;
@@ -116,7 +90,6 @@ h3 { font-size: 1rem; font-weight: 600; }
 /* El logo tiene fondo blanco: en modo oscuro va sobre una tarjeta clara. */
 .logo { display: block; height: auto; }
 :root[data-theme="dark"] .logo { background: #fff; border-radius: 12px; padding: 6px 10px; }
-@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .logo { background: #fff; border-radius: 12px; padding: 6px 10px; } }
 
 .icono-svg { width: 20px; height: 20px; flex: 0 0 auto; }
 

@@ -283,9 +283,7 @@ function aplicarTema(tema) {
 }
 try { aplicarTema(localStorage.getItem('tema')); } catch { /* sin almacenamiento */ }
 $('#tema').addEventListener('click', () => {
-  const oscuro = document.documentElement.dataset.theme
-    ? document.documentElement.dataset.theme === 'dark'
-    : matchMedia('(prefers-color-scheme: dark)').matches;
+  const oscuro = document.documentElement.dataset.theme === 'dark';
   const nuevo = oscuro ? 'light' : 'dark';
   aplicarTema(nuevo);
   try { localStorage.setItem('tema', nuevo); } catch { /* sin almacenamiento */ }
