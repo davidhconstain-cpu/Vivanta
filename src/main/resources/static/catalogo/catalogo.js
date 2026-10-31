@@ -173,7 +173,7 @@ function dibujarGrilla() {
     const agotado = p.disponible <= 0;
     const enPedido = carrito[p.id] || 0;
     return `<article class="producto ${agotado ? 'agotado' : ''}">
-      <button type="button" class="foto" data-detalle="${p.id}" aria-label="Ver ${esc(p.nombre)}">
+      <button type="button" class="foto ${p.imagenes.length ? 'con-foto' : ''}" data-detalle="${p.id}" aria-label="Ver ${esc(p.nombre)}">
         <img src="${foto(p)}" alt="" loading="lazy" class="${p.imagenes.length ? '' : 'sin-foto'}">
         ${agotado ? '<span class="etiqueta agotado">Agotado</span>' : ''}
       </button>
