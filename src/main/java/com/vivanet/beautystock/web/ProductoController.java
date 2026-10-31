@@ -83,6 +83,12 @@ public class ProductoController {
         return servicio.cambiarActivo(id, Boolean.TRUE.equals(datos.get("activo")));
     }
 
+    @DeleteMapping("/productos/{id}")
+    public ResponseEntity<Void> eliminar(@PathVariable Long id) {
+        servicio.eliminar(id);
+        return ResponseEntity.noContent().build();
+    }
+
     @GetMapping("/productos/{id}/historial-precios")
     public List<HistorialPrecioDto> historial(@PathVariable Long id) {
         return servicio.historialPrecios(id);

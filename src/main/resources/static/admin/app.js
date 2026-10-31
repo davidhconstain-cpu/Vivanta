@@ -478,6 +478,7 @@ async function detalleProducto(p) {
         <button type="button" class="pequeno" data-accion="ajustar">Ajustar existencias</button>
         <button type="button" class="pequeno" data-accion="historial">Historial de precios</button>
         <button type="button" class="pequeno ${p.activo ? 'peligro' : ''}" data-accion="activo">${p.activo ? 'Desactivar' : 'Activar'}</button>
+        ${p.activo ? '' : '<button type="button" class="pequeno peligro" data-accion="eliminar">Eliminar</button>'}
       </div>
       <p class="suave" style="margin:0">Las ventas descuentan primero del lote más antiguo (PEPS).${p.precioVenta !== p.precioSugerido ? ` Precio sugerido con el costo actual: ${cop(p.precioSugerido)}.` : ''}</p>
       <div class="tabla-contenedor"><table>
@@ -496,6 +497,14 @@ async function detalleProducto(p) {
       avisar(p.activo ? 'Producto desactivado (su historial se conserva)' : 'Producto activado');
       recargar();
     }),
+    eliminar: () => {
+      if (!confirm(`¿Eliminar definitivamente ${p.codigo} «${p.nombre}»? Solo se puede si nunca tuvo compras, ventas ni movimientos.`)) return;
+      intentar(async () => {
+        await api(`/api/productos/${p.id}`, { metodo: 'DELETE' });
+        avisar('Producto eliminado');
+        recargar();
+      });
+    },
   };
   $$('#detalle-producto [data-accion]').forEach((b) => b.addEventListener('click', acciones[b.dataset.accion]));
   $('#detalle-producto').scrollIntoView({ behavior: 'smooth', block: 'nearest' });

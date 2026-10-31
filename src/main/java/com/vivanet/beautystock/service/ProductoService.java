@@ -114,6 +114,7 @@ public class ProductoService {
 
     @Transactional
     public ProductoDto crear(ProductoRequest datos) {
+        validarNoRepetido(datos, null);
         Producto p = new Producto();
         p.setCodigo(consecutivos.siguiente("P"));
         copiar(datos, p);
@@ -124,6 +125,7 @@ public class ProductoService {
 
     @Transactional
     public ProductoDto actualizar(Long id, ProductoRequest datos) {
+        validarNoRepetido(datos, id);
         Producto p = buscar(id);
         copiar(datos, p);
         cambiarPrecio(p, datos.precioVenta());
@@ -143,6 +145,25 @@ public class ProductoService {
     public ProductoDto cambiarActivo(Long id, boolean activo) {
         buscar(id).setActivo(activo);
         return consultar(id);
+    }
+
+    /**
+     * Borra un producto creado por error. Solo si esta desactivado y nunca tuvo
+     * compras, ventas, pedidos ni movimientos; si los tuvo se deja desactivado.
+     */
+    @Transactional
+    public void eliminar(Long id) {
+        Producto p = buscar(id);
+        if (p.isActivo()) {
+            throw new NegocioException("Primero desactiva el producto.");
+        }
+        if (productos.usos(id) > 0) {
+            throw new NegocioException("El producto " + p.getCodigo()
+                    + " tiene compras, ventas o movimientos registrados; no se puede eliminar. Déjalo desactivado.");
+        }
+        productos.borrarImagenes(id);
+        productos.borrarHistorial(id);
+        productos.delete(p);
     }
 
     @Transactional(readOnly = true)
@@ -216,6 +237,22 @@ public class ProductoService {
     }
 
     // ---------- Auxiliares ----------
+
+    /** No permite dos productos con el mismo nombre y marca (sin importar tildes, mayusculas ni espacios). */
+    private void validarNoRepetido(ProductoRequest datos, Long id) {
+        String clave = clave(datos.nombre(), datos.marca());
+        for (Producto otro : productos.findAll()) {
+            if (!otro.getId().equals(id) && clave(otro.getNombre(), otro.getMarca()).equals(clave)) {
+                throw new NegocioException("Ya existe el producto " + otro.getCodigo() + " «" + otro.getNombre()
+                        + "» de " + otro.getMarca() + (otro.isActivo() ? "" : " (desactivado: puedes activarlo de nuevo)")
+                        + ". Búscalo en Inventario en lugar de crearlo otra vez.");
+            }
+        }
+    }
+
+    private static String clave(String nombre, String marca) {
+        return normalizar(nombre).replaceAll("\\s+", " ") + "|" + normalizar(marca).replaceAll("\\s+", " ");
+    }
 
     private void copiar(ProductoRequest datos, Producto p) {
         p.setNombre(datos.nombre().trim());
