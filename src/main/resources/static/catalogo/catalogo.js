@@ -48,7 +48,7 @@ async function iniciar() {
   }
   const n = catalogo.negocio;
   document.title = 'Catálogo · ' + n.nombreNegocio;
-  if (n.tieneLogo) $$('.logo').forEach((img) => { img.src = '/api/public/logo'; });
+  if (n.tieneLogo) $('#banner').src = '/api/public/logo';
   dibujarPie(n);
 
   // Quita del pedido productos que ya no existen.
@@ -59,7 +59,9 @@ async function iniciar() {
 
 function mostrar() {
   if (!catalogo.habilitado) return mantenimiento();
-  if (location.hash === '#pedido' && lineas().length) pantallaPedido();
+  const enPedido = location.hash === '#pedido' && lineas().length;
+  $('#cabeza').classList.toggle('compacta', Boolean(enPedido));
+  if (enPedido) pantallaPedido();
   else pantallaProductos();
   window.scrollTo(0, 0);
 }
@@ -67,31 +69,55 @@ function mostrar() {
 function mantenimiento() {
   const n = catalogo.negocio;
   $('#barra-pedido').hidden = true;
-  $('#principal').innerHTML = `<div class="tarjeta mantenimiento">
+  $('#principal').innerHTML = `<div class="contenedor"><div class="tarjeta mantenimiento">
     <h1 style="font-size:2rem;margin:0">Catálogo en mantenimiento</h1>
     <p style="margin:0">Estamos actualizando nuestros productos. Escríbenos y con gusto te atendemos.</p>
     ${n.horarios ? `<p style="margin:0"><strong>Horarios:</strong> ${esc(n.horarios)}</p>` : ''}
     ${n.whatsapp ? `<a class="boton primario" target="_blank" rel="noopener" href="https://wa.me/${telWa(n.whatsapp)}">Escribir por WhatsApp</a>` : ''}
-  </div>`;
+  </div></div>`;
 }
 
+/** Logos de las redes (dibujados en SVG para no depender de otros sitios). */
+const ICONOS_REDES = {
+  whatsapp: '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2.2A9.8 9.8 0 0 0 3.6 17l-1.4 5 5.2-1.4A9.8 9.8 0 1 0 12 2.2zm0 17.8c-1.5 0-3-.4-4.2-1.2l-.3-.2-3.1.8.8-3-.2-.3A8.1 8.1 0 1 1 12 20z"/><path d="M16.5 14.1c-.2-.1-1.5-.7-1.7-.8-.2-.1-.4-.1-.6.1l-.8 1c-.1.2-.3.2-.5.1-.7-.3-1.4-.7-2-1.3-.5-.5-.9-1-1.3-1.6-.1-.2 0-.4.1-.5l.4-.5.3-.5v-.5l-.8-1.9c-.2-.5-.4-.4-.6-.4h-.5c-.2 0-.5.1-.7.3-.8.8-1 1.8-.7 2.8.3 1 .9 1.9 1.6 2.7 1.3 1.6 3 2.7 4.9 3.2.6.2 1.3.2 1.9.1.7-.2 1.4-.7 1.6-1.4.1-.3.1-.7 0-1l-.6-.3z"/></svg>',
+  instagram: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="5"/><circle cx="12" cy="12" r="4"/><circle cx="17.5" cy="6.5" r="1" fill="currentColor" stroke="none"/></svg>',
+  facebook: '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M13.5 22v-8.2h2.8l.4-3.2h-3.2V8.5c0-.9.3-1.6 1.6-1.6h1.7V4.1c-.3 0-1.3-.1-2.5-.1-2.5 0-4.2 1.5-4.2 4.3v2.4H7.3v3.2h2.8V22h3.4z"/></svg>',
+  tiktok: '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M16.6 2h-3.3v13.4a2.9 2.9 0 1 1-2.9-2.9c.3 0 .6 0 .8.1V9.2l-.8-.1a6.2 6.2 0 1 0 6.2 6.2V8.6a8 8 0 0 0 4.7 1.5V6.8a4.7 4.7 0 0 1-4.7-4.8z"/></svg>',
+  compartir: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="m8.6 13.5 6.8 4M15.4 6.5l-6.8 4"/></svg>',
+};
+const ICONO_OFERTA = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12V4h8l10 10-8 8L3 12z"/><circle cx="7.5" cy="8.5" r="1"/></svg>';
+
 function dibujarPie(n) {
-  const redes = [['Instagram', n.instagram], ['Facebook', n.facebook], ['TikTok', n.tiktok]].filter(([, u]) => u);
+  const red = (clase, nombre, url) => `<a href="${esc(url)}" target="_blank" rel="noopener"><span class="circulo red-${clase}">${ICONOS_REDES[clase]}</span>${nombre}</a>`;
+  const redes = [
+    n.whatsapp && red('whatsapp', 'WhatsApp', 'https://wa.me/' + telWa(n.whatsapp)),
+    n.instagram && red('instagram', 'Instagram', n.instagram),
+    n.facebook && red('facebook', 'Facebook', n.facebook),
+    n.tiktok && red('tiktok', 'TikTok', n.tiktok),
+  ].filter(Boolean).join('');
+  const categorias = catalogo.habilitado ? [...new Set(catalogo.productos.map((p) => p.categoria).filter(Boolean))].sort() : [];
   $('#pie').innerHTML = `
     <img class="logo" src="${n.tieneLogo ? '/api/public/logo' : '/img/logo-vivanta.png'}" alt="${esc(n.nombreNegocio)}">
     ${n.horarios ? `<p>${esc(n.horarios)}</p>` : ''}
     ${n.direccion ? `<p>${esc(n.direccion)}</p>` : ''}
     ${n.telefono ? `<p>Tel. ${esc(n.telefono)}</p>` : ''}
+    ${categorias.length ? `<h2>Categorías</h2><nav class="categorias-pie" aria-label="Categorías">${categorias.map((c) => `<a href="#" data-ir-cat="${esc(c)}">${esc(c)}</a>`).join('')}</nav>` : ''}
+    <h2>Síguenos</h2>
     <div class="redes">
-      ${n.whatsapp ? `<a class="boton" target="_blank" rel="noopener" href="https://wa.me/${telWa(n.whatsapp)}">WhatsApp</a>` : ''}
-      ${redes.map(([nombre, url]) => `<a class="boton" target="_blank" rel="noopener" href="${esc(url)}">${nombre}</a>`).join('')}
-      <button type="button" id="compartir">Compartir catálogo</button>
+      ${redes}
+      <button type="button" id="compartir"><span class="circulo red-compartir">${ICONOS_REDES.compartir}</span>Compartir</button>
     </div>`;
   $('#compartir').addEventListener('click', () => {
     const url = location.origin + '/catalogo/';
     if (navigator.share) navigator.share({ title: n.nombreNegocio, url }).catch(() => {});
     else window.open('https://wa.me/?text=' + encodeURIComponent('Mira el catálogo de ' + n.nombreNegocio + ': ' + url), '_blank', 'noopener');
   });
+  $$('[data-ir-cat]').forEach((a) => a.addEventListener('click', (e) => {
+    e.preventDefault();
+    categoria = a.dataset.irCat;
+    if (location.hash === '#pedido') location.hash = ''; else pantallaProductos();
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }));
 }
 
 // ---------- Pantalla 1: productos ----------
@@ -100,25 +126,27 @@ function pantallaProductos() {
   const categorias = [...new Set(catalogo.productos.map((p) => p.categoria).filter(Boolean))].sort();
   $('#principal').innerHTML = `
     <div class="contenedor">
+      <h1 class="titulo-catalogo">Nuestros productos</h1>
       <div class="filtros">
         <label for="buscar" style="position:absolute;left:-9999px">Buscar productos</label>
         <input id="buscar" type="search" placeholder="Buscar productos" value="${esc(busqueda)}">
         <div class="chips" role="group" aria-label="Categorías">
           <button type="button" data-cat="" aria-pressed="${!categoria}">Todos</button>
-          ${catalogo.productos.some((p) => p.precioAntes) ? `<button type="button" class="chip-oferta" data-cat="${OFERTAS}" aria-pressed="${categoria === OFERTAS}">Ofertas</button>` : ""}
+          ${catalogo.productos.some((p) => p.precioAntes) ? `<button type="button" class="chip-oferta" data-cat="${OFERTAS}" aria-pressed="${categoria === OFERTAS}">${ICONO_OFERTA}Ofertas</button>` : ''}
           ${categorias.map((c) => `<button type="button" data-cat="${esc(c)}" aria-pressed="${c === categoria}">${esc(c)}</button>`).join('')}
         </div>
       </div>
       <div class="grilla" id="grilla"></div>
     </div>`;
   $('#buscar').addEventListener('input', (e) => { busqueda = e.target.value; dibujarGrilla(); });
-  $('.chips').addEventListener('click', (e) => {
+  // Un solo manejador para los chips y el aviso de ofertas de la grilla.
+  $('#principal').onclick = (e) => {
     const b = e.target.closest('[data-cat]');
     if (!b) return;
     categoria = b.dataset.cat;
-    $$('[data-cat]').forEach((x) => x.setAttribute('aria-pressed', String(x === b)));
+    $$('.chips [data-cat]').forEach((x) => x.setAttribute('aria-pressed', String(x.dataset.cat === categoria)));
     dibujarGrilla();
-  });
+  };
   dibujarGrilla();
 }
 
@@ -129,32 +157,40 @@ const fechaLarga = (d) => new Date(d + "T00:00").toLocaleDateString("es-CO", { d
 /** Precio de la tarjeta: con oferta, el normal tachado al lado y hasta cuando dura. */
 function precioHtml(p) {
   if (!p.precioAntes) return `<p class="precio">${cop(p.precio)}</p>`;
-  return `<p class="precio oferta">${cop(p.precio)} <s class="antes">${cop(p.precioAntes)}</s></p>
-      ${p.ofertaHasta ? `<p class="vigencia">Hasta el ${fechaLarga(p.ofertaHasta)}</p>` : ""}`;
+  return `<p class="precio">${cop(p.precio)} <s class="antes">${cop(p.precioAntes)}</s></p>
+      ${p.ofertaHasta ? `<p class="vigencia">Hasta el ${fechaLarga(p.ofertaHasta)}</p>` : ''}`;
 }
 
 function dibujarGrilla() {
   const texto = normalizar(busqueda);
   const lista = catalogo.productos.filter((p) => (!categoria || p.categoria === categoria || (categoria === OFERTAS && p.precioAntes))
     && normalizar(`${p.nombre} ${p.marca} ${p.categoria || ''}`).includes(texto));
-  $('#grilla').innerHTML = lista.map((p) => {
+  const hayOfertas = catalogo.productos.some((p) => p.precioAntes && p.disponible > 0);
+  const avisoOfertas = hayOfertas && !categoria && !texto
+    ? `<button type="button" class="aviso-ofertas" data-cat="${OFERTAS}"><span class="tile">${ICONO_OFERTA.replace(/16/g, '20')}</span>
+        <span><strong>Ofertas especiales</strong><span class="texto">Precios especiales en productos seleccionados</span></span></button>` : '';
+  $('#grilla').innerHTML = avisoOfertas + lista.map((p) => {
     const agotado = p.disponible <= 0;
     const enPedido = carrito[p.id] || 0;
     return `<article class="producto ${agotado ? 'agotado' : ''}">
       <button type="button" class="foto" data-detalle="${p.id}" aria-label="Ver ${esc(p.nombre)}">
-        <img src="${foto(p)}" alt="" loading="lazy">
-        ${agotado ? '<span class="etiqueta agotado">Agotado</span>' : p.precioAntes ? `<span class="etiqueta oferta">−${descuento(p)} %</span>` : ''}
+        <img src="${foto(p)}" alt="" loading="lazy" class="${p.imagenes.length ? '' : 'sin-foto'}">
+        ${agotado ? '<span class="etiqueta agotado">Agotado</span>' : ''}
       </button>
-      <h2>${esc(p.nombre)}</h2>
-      <p class="marca-prod" style="margin:0 4px">${esc(p.marca)}</p>
-      ${precioHtml(p)}
-      <div class="acciones">
-        ${agotado ? '<button type="button" disabled>No disponible</button>'
-          : enPedido ? `<div class="stepper"><button type="button" data-menos="${p.id}" aria-label="Quitar una unidad">−</button><output>${enPedido}</output><button type="button" class="mas" data-mas="${p.id}" aria-label="Agregar una unidad">+</button></div>`
-          : `<button type="button" class="contorno" data-mas="${p.id}">Agregar</button>`}
+      <div class="cuerpo">
+        ${p.categoria ? `<span class="categoria-prod">${esc(p.categoria)}</span>` : ''}
+        ${p.precioAntes && !agotado ? `<span class="pastilla-oferta">Oferta −${descuento(p)} %</span>` : ''}
+        <h2>${esc(p.nombre)}</h2>
+        <p class="marca-prod">${esc(p.marca)}</p>
+        ${precioHtml(p)}
+        <div class="acciones">
+          ${agotado ? '<button type="button" disabled>No disponible</button>'
+            : enPedido ? `<div class="stepper"><button type="button" data-menos="${p.id}" aria-label="Quitar una unidad">−</button><output>${enPedido}</output><button type="button" class="mas" data-mas="${p.id}" aria-label="Agregar una unidad">+</button></div>`
+            : `<button type="button" class="contorno" data-mas="${p.id}">Agregar</button>`}
+        </div>
       </div>
     </article>`;
-  }).join('') || '<p class="vacio" style="grid-column:1/-1">No encontramos productos.</p>';
+  }).join('') + (lista.length ? '' : '<p class="vacio" style="grid-column:1/-1">No encontramos productos.</p>');
   actualizarBarra();
 }
 
@@ -164,6 +200,8 @@ function actualizarBarra() {
   $('#barra-pedido').hidden = unidades === 0 || location.hash === '#pedido';
   $('#barra-cuenta').textContent = `Ver pedido · ${unidades} ${unidades === 1 ? 'unidad' : 'unidades'}`;
   $('#barra-total').textContent = cop(ls.reduce((s, l) => s + l.cantidad * l.p.precio, 0));
+  const domicilio = catalogo.negocio.costoDomicilio;
+  $('#barra-nota').textContent = 'Pedidos por WhatsApp' + (domicilio ? ' · Domicilio ' + cop(domicilio) : '');
 }
 
 function cambiarCantidad(id, delta) {
