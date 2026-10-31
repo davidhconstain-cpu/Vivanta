@@ -2,6 +2,7 @@ package com.vivanet.beautystock.service;
 
 import java.io.IOException;
 import java.text.Normalizer;
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -119,6 +120,7 @@ public class ProductoService {
         p.setCodigo(consecutivos.siguiente("P"));
         copiar(datos, p);
         p.setPrecioVenta(datos.precioVenta() > 0 ? datos.precioVenta() : precioSugerido(datos.costo()));
+        copiarOferta(datos, p);
         productos.save(p);
         return consultar(p.getId());
     }
@@ -129,6 +131,7 @@ public class ProductoService {
         Producto p = buscar(id);
         copiar(datos, p);
         cambiarPrecio(p, datos.precioVenta());
+        copiarOferta(datos, p);
         return consultar(id);
     }
 
@@ -264,6 +267,28 @@ public class ProductoService {
                 .orElseThrow(() -> new NegocioException("Categoria no encontrada.")));
     }
 
+    /** Oferta opcional. Se valida despues de fijar el precio normal. */
+    private void copiarOferta(ProductoRequest datos, Producto p) {
+        Long oferta = datos.precioOferta();
+        if (oferta == null || oferta == 0) {
+            p.setPrecioOferta(null);
+            p.setOfertaDesde(null);
+            p.setOfertaHasta(null);
+            return;
+        }
+        if (oferta >= p.getPrecioVenta()) {
+            throw new NegocioException("El precio de oferta debe ser menor al precio de venta ("
+                    + Pesos.formato(p.getPrecioVenta()) + ").");
+        }
+        if (datos.ofertaDesde() != null && datos.ofertaHasta() != null
+                && datos.ofertaHasta().isBefore(datos.ofertaDesde())) {
+            throw new NegocioException("La fecha final de la oferta no puede ser anterior a la inicial.");
+        }
+        p.setPrecioOferta(oferta);
+        p.setOfertaDesde(datos.ofertaDesde());
+        p.setOfertaHasta(datos.ofertaHasta());
+    }
+
     private ProductoDto aDto(Producto p, Existencias e, List<Long> imgs, int porcentaje) {
         if (e == null) {
             e = new Existencias(0, 0, 0);
@@ -274,7 +299,9 @@ public class ProductoService {
                 p.getCategoria() != null ? p.getCategoria().getNombre() : null,
                 p.getDescripcion(), p.getCosto(), p.getPrecioVenta(), sugerido, p.getStockMinimo(), p.isActivo(),
                 e.fisicas(), e.reservadas(), e.disponibles(), p.isActivo() && e.fisicas() <= p.getStockMinimo(),
-                imgs != null ? imgs : List.of());
+                imgs != null ? imgs : List.of(),
+                p.getPrecioOferta(), p.getOfertaDesde(), p.getOfertaHasta(),
+                p.ofertaActiva(LocalDate.now()), p.precioActual(LocalDate.now()));
     }
 
     /** Minusculas y sin tildes, para que "esika" encuentre "Ésika". */

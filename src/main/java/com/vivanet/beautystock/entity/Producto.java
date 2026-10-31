@@ -1,5 +1,6 @@
 package com.vivanet.beautystock.entity;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 
 import jakarta.persistence.Column;
@@ -44,6 +45,12 @@ public class Producto {
     /** Precio de venta sugerido (COP). */
     private long precioVenta;
 
+    /** Precio de oferta (COP). Vacio = sin oferta. */
+    private Long precioOferta;
+    /** Fechas opcionales de la oferta: sin fecha, aplica hasta que se quite. */
+    private LocalDate ofertaDesde;
+    private LocalDate ofertaHasta;
+
     /** Alerta cuando la existencia sea igual o menor a este valor. */
     private int stockMinimo;
 
@@ -66,6 +73,25 @@ public class Producto {
     public void setCosto(long costo) { this.costo = costo; }
     public long getPrecioVenta() { return precioVenta; }
     public void setPrecioVenta(long precioVenta) { this.precioVenta = precioVenta; }
+    public Long getPrecioOferta() { return precioOferta; }
+    public void setPrecioOferta(Long precioOferta) { this.precioOferta = precioOferta; }
+    public LocalDate getOfertaDesde() { return ofertaDesde; }
+    public void setOfertaDesde(LocalDate ofertaDesde) { this.ofertaDesde = ofertaDesde; }
+    public LocalDate getOfertaHasta() { return ofertaHasta; }
+    public void setOfertaHasta(LocalDate ofertaHasta) { this.ofertaHasta = ofertaHasta; }
+
+    /** La oferta aplica si tiene precio menor al normal y hoy esta dentro de sus fechas. */
+    public boolean ofertaActiva(LocalDate hoy) {
+        return precioOferta != null && precioOferta > 0 && precioOferta < precioVenta
+                && (ofertaDesde == null || !hoy.isBefore(ofertaDesde))
+                && (ofertaHasta == null || !hoy.isAfter(ofertaHasta));
+    }
+
+    /** Precio que se cobra hoy: el de oferta si esta activa, si no el normal. */
+    public long precioActual(LocalDate hoy) {
+        return ofertaActiva(hoy) ? precioOferta : precioVenta;
+    }
+
     public int getStockMinimo() { return stockMinimo; }
     public void setStockMinimo(int stockMinimo) { this.stockMinimo = stockMinimo; }
     public boolean isActivo() { return activo; }

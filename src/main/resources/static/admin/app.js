@@ -297,7 +297,7 @@ $('#tema').addEventListener('click', () => {
 
 const ALERTA_ESTILO = {
   stock: ['alerta', '', 'bajo'], agotado: ['caja', 'rosa', 'agotado'], 'por-vencer': ['reloj', '', 'bajo'],
-  vencido: ['reloj', 'rosa', 'peligro'], pedido: ['chat', 'rosa', 'numero'],
+  vencido: ['reloj', 'rosa', 'peligro'], pedido: ['chat', 'rosa', 'numero'], oferta: ['reloj', 'rosa', 'numero'],
 };
 
 async function panel() {
@@ -440,7 +440,8 @@ async function listaProductos() {
           <td><div class="producto-celda"><img class="miniatura" src="${fotoProducto(p)}" alt=""><div><strong>${esc(p.nombre)}</strong><span>${esc(p.codigo)}</span></div></div></td>
           <td>${esc(p.marca)}</td><td>${esc(p.categoriaNombre || '—')}</td>
           <td class="num">${p.existencias}${p.reservado ? ` <span class="suave" title="Reservadas por pedidos">(${p.reservado} res.)</span>` : ''}</td>
-          <td class="num">${p.stockMinimo}</td><td class="num">${cop(p.costo)}</td><td class="num">${cop(p.precioVenta)}</td>
+          <td class="num">${p.stockMinimo}</td><td class="num">${cop(p.costo)}</td><td class="num">${p.ofertaActiva
+            ? `<s class="suave">${cop(p.precioVenta)}</s><br><strong class="precio-oferta">${cop(p.precioOferta)}</strong>` : cop(p.precioVenta)}</td>
           <td>${estadoProducto(p)}</td></tr>`).join('')}</tbody>
       </table><div class="pie-tabla">Mostrando ${lista.length} de ${activos} productos activos</div></div>`
       : `<div class="tarjeta vacio">${todos.length ? 'No hay productos con ese filtro.' : 'Aún no tienes productos. Crea el primero con «Nuevo producto».'}</div>`;
@@ -480,6 +481,7 @@ async function detalleProducto(p) {
         <button type="button" class="pequeno ${p.activo ? 'peligro' : ''}" data-accion="activo">${p.activo ? 'Desactivar' : 'Activar'}</button>
         ${p.activo ? '' : '<button type="button" class="pequeno peligro" data-accion="eliminar">Eliminar</button>'}
       </div>
+      ${p.precioOferta ? `<p style="margin:0"><span class="etiqueta numero">Oferta</span> ${cop(p.precioOferta)} en lugar de ${cop(p.precioVenta)} (−${Math.round((1 - p.precioOferta / p.precioVenta) * 100)} %) · ${textoVigencia(p)}${p.ofertaActiva ? '' : ' · <strong>no está activa hoy</strong>'}</p>` : ''}
       <p class="suave" style="margin:0">Las ventas descuentan primero del lote más antiguo (PEPS).${p.precioVenta !== p.precioSugerido ? ` Precio sugerido con el costo actual: ${cop(p.precioSugerido)}.` : ''}</p>
       <div class="tabla-contenedor"><table>
         <thead><tr><th>Fecha de entrada</th><th>Origen</th><th class="num">Entró</th><th class="num">Quedan</th><th class="num">Costo unitario</th></tr></thead>
@@ -510,6 +512,15 @@ async function detalleProducto(p) {
   $('#detalle-producto').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
 
+/** "del 1 al 15 de noviembre", "hasta el 15 de noviembre" o "sin fecha de fin". */
+function textoVigencia(p) {
+  const f = (d) => new Date(d + 'T00:00').toLocaleDateString('es-CO', { day: 'numeric', month: 'long' });
+  if (p.ofertaDesde && p.ofertaHasta) return `del ${f(p.ofertaDesde)} al ${f(p.ofertaHasta)}`;
+  if (p.ofertaHasta) return `hasta el ${f(p.ofertaHasta)}`;
+  if (p.ofertaDesde) return `desde el ${f(p.ofertaDesde)}, sin fecha de fin`;
+  return 'sin fecha de fin';
+}
+
 function formularioProducto(p, recargar) {
   const m = abrirModal(p ? 'Editar ' + esc(p.codigo) : 'Nuevo producto', `
     <form id="form-producto" class="campos">
@@ -522,6 +533,12 @@ function formularioProducto(p, recargar) {
       <div class="ancho fila"><span class="suave" id="sugerido"></span><button type="button" class="pequeno" id="usar-sugerido">Usar precio sugerido</button></div>
       <label>Stock mínimo <input name="stockMinimo" type="number" min="0" step="1" data-numero value="${p?.stockMinimo ?? 0}"></label>
       <label class="ancho">Descripción <textarea name="descripcion">${esc(p?.descripcion)}</textarea></label>
+      <h3 class="ancho" style="margin:6px 0 -6px">Oferta en el catálogo <span class="suave" style="font-weight:400">(opcional)</span></h3>
+      <label>Precio de oferta (COP) <input name="precioOferta" type="number" min="0" step="1" data-numero value="${p?.precioOferta ?? ''}" placeholder="Vacío = sin oferta"></label>
+      <label>o descuento (%) <input id="oferta-porcentaje" type="number" min="1" max="90" step="1" placeholder="Ej. 15"></label>
+      <label>Desde <input name="ofertaDesde" type="date" value="${p?.ofertaDesde ?? ''}"></label>
+      <label>Hasta <input name="ofertaHasta" type="date" value="${p?.ofertaHasta ?? ''}"></label>
+      <p class="ancho suave" style="margin:0">Sin fechas, la oferta dura hasta que borres el precio de oferta. En el catálogo se ve el precio normal tachado.</p>
       <label class="ancho">Fotos ${p?.imagenes.length ? `(ya tiene ${p.imagenes.length}; las nuevas se agregan)` : '(desde el celular puedes tomarla con la cámara)'}
         <input type="file" id="fotos-producto" accept="image/*" multiple></label>
       ${p ? '' : '<p class="ancho suave">Las existencias se cargan registrando una <strong>Entrada de mercancía</strong> (o un ajuste de inventario).</p>'}
@@ -537,12 +554,25 @@ function formularioProducto(p, recargar) {
   form.costo.addEventListener('input', calcular);
   $('#usar-sugerido', m).addEventListener('click', () => { form.precioVenta.value = sugerido; });
   calcular();
+  const precioNormal = () => Number(form.precioVenta.value || sugerido || 0);
+  // El porcentaje solo ayuda a calcular: lo que se guarda es el precio de oferta (redondeado a la centena).
+  $('#oferta-porcentaje', m).addEventListener('input', (e) => {
+    const pct = Number(e.target.value);
+    form.precioOferta.value = pct > 0 && pct < 100 ? Math.round(precioNormal() * (1 - pct / 100) / 100) * 100 : '';
+  });
+  form.precioOferta.addEventListener('input', () => {
+    const oferta = Number(form.precioOferta.value);
+    $('#oferta-porcentaje', m).value = oferta > 0 && precioNormal() ? Math.round((1 - oferta / precioNormal()) * 100) : '';
+  });
+  form.precioOferta.dispatchEvent(new Event('input'));
   form.addEventListener('submit', (e) => {
     e.preventDefault();
     intentar(async () => {
       const datos = leerFormulario(form);
       datos.precioVenta = datos.precioVenta ?? 0;
       if (p && !datos.precioVenta) datos.precioVenta = sugerido;
+      if (datos.precioOferta && datos.precioOferta < (datos.costo ?? 0)
+          && !confirm(`El precio de oferta (${cop(datos.precioOferta)}) queda por debajo del costo (${cop(datos.costo)}). Perderías dinero en cada venta.\n\n¿Guardar de todas formas?`)) return;
       const guardado = await api(p ? '/api/productos/' + p.id : '/api/productos', { metodo: p ? 'PUT' : 'POST', datos });
       const fotos = $('#fotos-producto', m).files;
       if (fotos.length) {
@@ -1046,7 +1076,7 @@ async function nuevaVenta() {
       return `<li>
         <img class="miniatura" src="${fotoProducto(p)}" alt="">
         <div class="texto"><strong>${esc(p.nombre)}</strong><span>${esc(p.codigo)} · ${esc(p.marca)} · ${p.disponible ? p.disponible + ' disponibles' : 'sin existencias'}</span></div>
-        ${p.disponible ? `<span class="precio">${cop(p.precioVenta)}</span>` : '<span class="etiqueta agotado">Agotado</span>'}
+        ${p.disponible ? `<span class="precio">${p.ofertaActiva ? '<span class="etiqueta numero">Oferta</span> ' : ''}${cop(p.precioActual)}</span>` : '<span class="etiqueta agotado">Agotado</span>'}
         <button type="button" class="contorno pequeno" data-agregar="${p.id}" ${quedan > 0 ? '' : 'disabled'}>Agregar</button>
       </li>`;
     }).join('') || '<li class="vacio">No se encontraron productos.</li>';
@@ -1093,7 +1123,7 @@ async function nuevaVenta() {
     const p = productosLista.find((x) => x.id === Number(b.dataset.agregar));
     const existente = carrito.find((l) => l.productoId === p.id);
     if (existente) existente.cantidad++;
-    else carrito.push({ productoId: p.id, nombre: p.nombre, disponible: p.disponible, precioLista: p.precioVenta, costo: p.costo, cantidad: 1, precio: p.precioVenta, descTipo: '', descValor: 0, total: 0 });
+    else carrito.push({ productoId: p.id, nombre: p.nombre, disponible: p.disponible, precioLista: p.precioVenta, costo: p.costo, cantidad: 1, precio: p.precioActual, descTipo: '', descValor: 0, total: 0 });
     dibujarCarrito();
   });
   $('#lineas').addEventListener('click', (e) => {

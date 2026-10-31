@@ -74,6 +74,14 @@ public class PanelService {
                         + p.stockMinimo(), "Stock bajo", "inventario"));
             }
         }
+        List<ProductoDto> enOferta = activos.stream().filter(ProductoDto::ofertaActiva).toList();
+        if (!enOferta.isEmpty()) {
+            long terminan = enOferta.stream()
+                    .filter(p -> p.ofertaHasta() != null && !p.ofertaHasta().isAfter(hoy.plusDays(1))).count();
+            alertas.add(new AlertaDto("oferta", enOferta.size() + " oferta(s) activa(s) en el catálogo",
+                    terminan > 0 ? terminan + " termina(n) hoy o mañana" : "Se muestran con el precio anterior tachado",
+                    "Oferta", "inventario"));
+        }
         for (Venta v : porCobrar) {
             String quien = v.getCliente() != null ? v.getCliente().getNombre() : "Cliente";
             agregarVencimiento(alertas, v.getFechaVencimiento(), hoy,
@@ -121,8 +129,9 @@ public class PanelService {
         List<ProductoCatalogoDto> lista = productos.listar(null, null, true).stream()
                 .filter(p -> config.isMostrarAgotados() || p.disponible() > 0)
                 .map(p -> new ProductoCatalogoDto(p.id(), p.nombre(), p.marca(), p.categoriaNombre(),
-                        p.descripcion(), p.precioVenta(), (int) p.disponible(),
-                        imagenes.getOrDefault(p.id(), List.of())))
+                        p.descripcion(), p.precioActual(), (int) p.disponible(),
+                        imagenes.getOrDefault(p.id(), List.of()),
+                        p.ofertaActiva() ? p.precioVenta() : 0, p.ofertaActiva() ? p.ofertaHasta() : null))
                 .toList();
         return new CatalogoDto(true, configuracion.negocioPublico(), lista);
     }

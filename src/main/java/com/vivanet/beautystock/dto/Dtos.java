@@ -38,7 +38,11 @@ public final class Dtos {
             String descripcion,
             @Min(0) long costo,
             @Min(0) long precioVenta,
-            @Min(0) int stockMinimo) {
+            @Min(0) int stockMinimo,
+            /** Oferta opcional: vacio = sin oferta. */
+            @Min(0) Long precioOferta,
+            LocalDate ofertaDesde,
+            LocalDate ofertaHasta) {
     }
 
     public record ProductoDto(
@@ -46,7 +50,10 @@ public final class Dtos {
             Long categoriaId, String categoriaNombre, String descripcion,
             long costo, long precioVenta, long precioSugerido, int stockMinimo, boolean activo,
             long existencias, long reservado, long disponible, boolean stockBajo,
-            List<Long> imagenes) {
+            List<Long> imagenes,
+            Long precioOferta, LocalDate ofertaDesde, LocalDate ofertaHasta,
+            /** Si la oferta aplica hoy y el precio que se cobra hoy. */
+            boolean ofertaActiva, long precioActual) {
     }
 
     public record HistorialPrecioDto(LocalDateTime fecha, long precioAnterior, long precioNuevo) {
@@ -194,7 +201,9 @@ public final class Dtos {
     }
 
     public record ProductoCatalogoDto(Long id, String nombre, String marca, String categoria, String descripcion,
-            long precio, int disponible, List<Long> imagenes) {
+            long precio, int disponible, List<Long> imagenes,
+            /** Con oferta activa: precio normal (tachado) y ultimo dia; si no, 0 y null. */
+            long precioAntes, LocalDate ofertaHasta) {
     }
 
     public record CatalogoDto(boolean habilitado, NegocioPublicoDto negocio, List<ProductoCatalogoDto> productos) {

@@ -12,6 +12,7 @@ FROM eclipse-temurin:21-jre
 WORKDIR /app
 COPY --from=compilacion /app/target/beautystock-*.jar app.jar
 # El plan gratis de Render tiene 512 MB de memoria: limitamos Java para no pasarnos.
-ENV JAVA_OPTS="-Xmx300m -Xss512k -XX:+UseSerialGC -XX:MaxMetaspaceSize=128m"
+# Hora de Colombia: "hoy" (ofertas, ventas del dia, vencimientos) cambia a medianoche de aqui, no de Londres.
+ENV JAVA_OPTS="-Xmx300m -Xss512k -XX:+UseSerialGC -XX:MaxMetaspaceSize=128m -Duser.timezone=America/Bogota"
 EXPOSE 8080
 CMD ["sh", "-c", "java $JAVA_OPTS -jar app.jar"]

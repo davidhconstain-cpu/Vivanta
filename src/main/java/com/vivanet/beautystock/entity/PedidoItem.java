@@ -32,7 +32,7 @@ public class PedidoItem {
         this.pedido = pedido;
         this.producto = producto;
         this.cantidad = cantidad;
-        this.precioUnitario = producto.getPrecioVenta();
+        this.precioUnitario = producto.precioActual(java.time.LocalDate.now());
         this.total = cantidad * precioUnitario;
     }
 

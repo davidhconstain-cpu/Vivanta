@@ -105,6 +105,7 @@ function pantallaProductos() {
         <input id="buscar" type="search" placeholder="Buscar productos" value="${esc(busqueda)}">
         <div class="chips" role="group" aria-label="Categorías">
           <button type="button" data-cat="" aria-pressed="${!categoria}">Todos</button>
+          ${catalogo.productos.some((p) => p.precioAntes) ? `<button type="button" class="chip-oferta" data-cat="${OFERTAS}" aria-pressed="${categoria === OFERTAS}">Ofertas</button>` : ""}
           ${categorias.map((c) => `<button type="button" data-cat="${esc(c)}" aria-pressed="${c === categoria}">${esc(c)}</button>`).join('')}
         </div>
       </div>
@@ -121,9 +122,20 @@ function pantallaProductos() {
   dibujarGrilla();
 }
 
+const OFERTAS = "__ofertas__";
+const descuento = (p) => Math.round((1 - p.precio / p.precioAntes) * 100);
+const fechaLarga = (d) => new Date(d + "T00:00").toLocaleDateString("es-CO", { day: "numeric", month: "long" });
+
+/** Precio de la tarjeta: con oferta, el normal tachado al lado y hasta cuando dura. */
+function precioHtml(p) {
+  if (!p.precioAntes) return `<p class="precio">${cop(p.precio)}</p>`;
+  return `<p class="precio oferta">${cop(p.precio)} <s class="antes">${cop(p.precioAntes)}</s></p>
+      ${p.ofertaHasta ? `<p class="vigencia">Hasta el ${fechaLarga(p.ofertaHasta)}</p>` : ""}`;
+}
+
 function dibujarGrilla() {
   const texto = normalizar(busqueda);
-  const lista = catalogo.productos.filter((p) => (!categoria || p.categoria === categoria)
+  const lista = catalogo.productos.filter((p) => (!categoria || p.categoria === categoria || (categoria === OFERTAS && p.precioAntes))
     && normalizar(`${p.nombre} ${p.marca} ${p.categoria || ''}`).includes(texto));
   $('#grilla').innerHTML = lista.map((p) => {
     const agotado = p.disponible <= 0;
@@ -131,11 +143,11 @@ function dibujarGrilla() {
     return `<article class="producto ${agotado ? 'agotado' : ''}">
       <button type="button" class="foto" data-detalle="${p.id}" aria-label="Ver ${esc(p.nombre)}">
         <img src="${foto(p)}" alt="" loading="lazy">
-        ${agotado ? '<span class="etiqueta agotado">Agotado</span>' : ''}
+        ${agotado ? '<span class="etiqueta agotado">Agotado</span>' : p.precioAntes ? `<span class="etiqueta oferta">−${descuento(p)} %</span>` : ''}
       </button>
       <h2>${esc(p.nombre)}</h2>
       <p class="marca-prod" style="margin:0 4px">${esc(p.marca)}</p>
-      <p class="precio" style="margin:0 4px">${cop(p.precio)}</p>
+      ${precioHtml(p)}
       <div class="acciones">
         ${agotado ? '<button type="button" disabled>No disponible</button>'
           : enPedido ? `<div class="stepper"><button type="button" data-menos="${p.id}" aria-label="Quitar una unidad">−</button><output>${enPedido}</output><button type="button" class="mas" data-mas="${p.id}" aria-label="Agregar una unidad">+</button></div>`
@@ -188,7 +200,8 @@ function verDetalle(p) {
     <div class="detalle-fotos">${p.imagenes.length ? p.imagenes.map((i) => `<img src="/api/public/imagenes/${i}" alt="">`).join('') : `<img src="${foto(p)}" alt="">`}</div>
     <p class="suave">${esc(p.marca)}${p.categoria ? ' · ' + esc(p.categoria) : ''}</p>
     ${p.descripcion ? `<p style="white-space:pre-line">${esc(p.descripcion)}</p>` : ''}
-    <p class="cifra" style="font-size:2rem;margin:0">${cop(p.precio)}</p>
+    <p class="cifra" style="font-size:2rem;margin:0">${p.precioAntes ? `<s class="antes">${cop(p.precioAntes)}</s> ` : ""}${cop(p.precio)}</p>
+    ${p.precioAntes ? `<p class="vigencia" style="margin:0">Oferta −${descuento(p)} %${p.ofertaHasta ? " · hasta el " + fechaLarga(p.ofertaHasta) : ""}</p>` : ""}
     <div class="modal-pie">${p.disponible > 0 ? `<button class="primario" data-mas="${p.id}" data-cerrar>Agregar al pedido</button>` : '<span class="etiqueta agotado">Agotado</span>'}</div>
   </div>`;
   fondo.addEventListener('click', (e) => { if (e.target === fondo || e.target.closest('[data-cerrar]')) fondo.remove(); });

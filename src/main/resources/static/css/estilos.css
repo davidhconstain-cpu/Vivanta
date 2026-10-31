@@ -273,3 +273,6 @@ tr.inactivo td { opacity: .55; }
 .modal-cabecera { display: flex; align-items: center; gap: 1em; margin-bottom: 1em; }
 .modal-cabecera h2 { margin: 0; flex: 1; }
 .modal-pie { display: flex; gap: .6em; justify-content: flex-end; margin-top: 1.4em; flex-wrap: wrap; }
+
+/* Precio de oferta en el admin */
+.precio-oferta { color: var(--principal); }
