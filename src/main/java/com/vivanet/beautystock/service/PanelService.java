@@ -67,6 +67,9 @@ public class PanelService {
         List<AlertaDto> alertas = new ArrayList<>();
         List<ProductoDto> activos = productos.listar(null, null, true);
         for (ProductoDto p : activos) {
+            if (p.combo()) {
+                continue; // los sets dependen de sus productos, que ya tienen sus propias alertas
+            }
             if (p.existencias() == 0) {
                 alertas.add(new AlertaDto("agotado", p.nombre(), "Sin existencias", "Agotado", "inventario"));
             } else if (p.stockBajo()) {
@@ -131,7 +134,11 @@ public class PanelService {
                 .map(p -> new ProductoCatalogoDto(p.id(), p.nombre(), p.marca(), p.categoriaNombre(),
                         p.descripcion(), p.precioActual(), (int) p.disponible(),
                         imagenes.getOrDefault(p.id(), List.of()),
-                        p.ofertaActiva() ? p.precioVenta() : 0, p.ofertaActiva() ? p.ofertaHasta() : null))
+                        p.ofertaActiva() ? p.precioVenta() : 0, p.ofertaActiva() ? p.ofertaHasta() : null,
+                        p.combo(), p.componentes().stream()
+                                .map(c -> (c.cantidad() > 1 ? c.cantidad() + " × " : "") + c.nombre())
+                                .collect(java.util.stream.Collectors.joining(", ")),
+                        p.precioSeparado()))
                 .toList();
         return new CatalogoDto(true, configuracion.negocioPublico(), lista);
     }

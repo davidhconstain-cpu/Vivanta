@@ -42,7 +42,16 @@ public final class Dtos {
             /** Oferta opcional: vacio = sin oferta. */
             @Min(0) Long precioOferta,
             LocalDate ofertaDesde,
-            LocalDate ofertaHasta) {
+            LocalDate ofertaHasta,
+            /** Solo para sets: los productos que incluye. */
+            List<@Valid ComponenteRequest> componentes) {
+    }
+
+    public record ComponenteRequest(@NotNull Long productoId, @Min(1) int cantidad) {
+    }
+
+    public record ComponenteDto(Long productoId, String codigo, String nombre, int cantidad, long precioActual,
+            long disponible) {
     }
 
     public record ProductoDto(
@@ -53,7 +62,9 @@ public final class Dtos {
             List<Long> imagenes,
             Long precioOferta, LocalDate ofertaDesde, LocalDate ofertaHasta,
             /** Si la oferta aplica hoy y el precio que se cobra hoy. */
-            boolean ofertaActiva, long precioActual) {
+            boolean ofertaActiva, long precioActual,
+            /** Sets: lo que incluye y cuanto costaria por separado. */
+            boolean combo, List<ComponenteDto> componentes, long precioSeparado) {
     }
 
     public record HistorialPrecioDto(LocalDateTime fecha, long precioAnterior, long precioNuevo) {
@@ -203,7 +214,9 @@ public final class Dtos {
     public record ProductoCatalogoDto(Long id, String nombre, String marca, String categoria, String descripcion,
             long precio, int disponible, List<Long> imagenes,
             /** Con oferta activa: precio normal (tachado) y ultimo dia; si no, 0 y null. */
-            long precioAntes, LocalDate ofertaHasta) {
+            long precioAntes, LocalDate ofertaHasta,
+            /** Sets: "Kaiak Clasico, Kaiak Aventura" y el precio de comprarlos por separado. */
+            boolean combo, String incluye, long precioSeparado) {
     }
 
     public record CatalogoDto(boolean habilitado, NegocioPublicoDto negocio, List<ProductoCatalogoDto> productos) {

@@ -55,6 +55,10 @@ public class CompraService {
         long total = 0;
         for (CompraItemRequest itemDatos : datos.items()) {
             Producto producto = productos.buscar(itemDatos.productoId());
+            if (producto.isCombo()) {
+                throw new NegocioException(producto.getNombre()
+                        + " es un set: registra la entrada de los productos que incluye.");
+            }
             CompraItem item = new CompraItem(compra, producto, itemDatos.cantidad(), itemDatos.costoUnitario());
             compra.getItems().add(item);
             total += item.getSubtotal();

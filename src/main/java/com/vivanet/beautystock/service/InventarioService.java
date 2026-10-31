@@ -11,10 +11,12 @@ import org.springframework.transaction.annotation.Transactional;
 import com.vivanet.beautystock.dto.Dtos.AjusteRequest;
 import com.vivanet.beautystock.dto.Dtos.LoteDto;
 import com.vivanet.beautystock.dto.Dtos.MovimientoDto;
+import com.vivanet.beautystock.entity.ComboItem;
 import com.vivanet.beautystock.entity.Lote;
 import com.vivanet.beautystock.entity.MovimientoInventario;
 import com.vivanet.beautystock.entity.Producto;
 import com.vivanet.beautystock.entity.TipoMovimiento;
+import com.vivanet.beautystock.repository.ComboItemRepository;
 import com.vivanet.beautystock.repository.LoteRepository;
 import com.vivanet.beautystock.repository.MovimientoInventarioRepository;
 import com.vivanet.beautystock.repository.PedidoRepository;
@@ -35,9 +37,9 @@ public class InventarioService {
     }
 
     /** Existencias de un producto: fisicas, reservadas por pedidos y disponibles para vender. */
-    public record Existencias(long fisicas, long valor, long reservadas) {
-        public long disponibles() {
-            return Math.max(0, fisicas - reservadas);
+    public record Existencias(long fisicas, long valor, long reservadas, long disponibles) {
+        public Existencias(long fisicas, long valor, long reservadas) {
+            this(fisicas, valor, reservadas, Math.max(0, fisicas - reservadas));
         }
     }
 
@@ -45,13 +47,15 @@ public class InventarioService {
     private final MovimientoInventarioRepository movimientos;
     private final PedidoRepository pedidos;
     private final ProductoRepository productos;
+    private final ComboItemRepository combos;
 
     public InventarioService(LoteRepository lotes, MovimientoInventarioRepository movimientos,
-            PedidoRepository pedidos, ProductoRepository productos) {
+            PedidoRepository pedidos, ProductoRepository productos, ComboItemRepository combos) {
         this.lotes = lotes;
         this.movimientos = movimientos;
         this.pedidos = pedidos;
         this.productos = productos;
+        this.combos = combos;
     }
 
     /** Existencias de todos los productos en dos consultas, para listados. */
@@ -62,16 +66,52 @@ public class InventarioService {
             datos.put((Long) fila[0], new long[] { numero(fila[1]), numero(fila[2]), 0 });
         }
         for (Object[] fila : pedidos.reservasPorProducto()) {
-            datos.computeIfAbsent((Long) fila[0], k -> new long[3])[2] = numero(fila[1]);
+            datos.computeIfAbsent((Long) fila[0], k -> new long[3])[2] += numero(fila[1]);
+        }
+        // Un set pedido aparta tambien las unidades de sus productos.
+        for (Object[] fila : pedidos.reservasPorSets()) {
+            datos.computeIfAbsent((Long) fila[0], k -> new long[3])[2] += numero(fila[1]);
         }
         Map<Long, Existencias> resultado = new HashMap<>();
         datos.forEach((id, d) -> resultado.put(id, new Existencias(d[0], d[1], d[2])));
         return resultado;
     }
 
+    /**
+     * Como existenciasDeTodos, mas los sets: un set alcanza para tantas unidades como
+     * permita su componente mas escaso. Sus reservadas son los sets pedidos y pendientes.
+     */
+    @Transactional(readOnly = true)
+    public Map<Long, Existencias> existenciasConSets() {
+        Map<Long, Existencias> base = existenciasDeTodos();
+        Map<Long, Existencias> resultado = new HashMap<>(base);
+        Map<Long, List<ComboItem>> porSet = new HashMap<>();
+        for (ComboItem c : combos.todos()) {
+            porSet.computeIfAbsent(c.getCombo().getId(), k -> new ArrayList<>()).add(c);
+        }
+        porSet.forEach((setId, componentes) -> {
+            long fisicas = Long.MAX_VALUE;
+            long disponibles = Long.MAX_VALUE;
+            for (ComboItem c : componentes) {
+                Existencias e = base.getOrDefault(c.getProducto().getId(), new Existencias(0, 0, 0));
+                fisicas = Math.min(fisicas, e.fisicas() / c.getCantidad());
+                disponibles = Math.min(disponibles, e.disponibles() / c.getCantidad());
+            }
+            Existencias propias = base.get(setId);
+            resultado.put(setId, new Existencias(fisicas, 0, propias != null ? propias.reservadas() : 0, disponibles));
+        });
+        return resultado;
+    }
+
+    /** Unidades de un producto (no set) que se pueden vender o pedir: fisicas menos reservadas. */
     @Transactional(readOnly = true)
     public long disponibles(Long productoId) {
-        return Math.max(0, lotes.existencias(productoId) - pedidos.reservado(productoId));
+        return Math.max(0, lotes.existencias(productoId) - reservado(productoId));
+    }
+
+    /** Apartadas por pedidos pendientes, sueltas o dentro de sets. */
+    private long reservado(Long productoId) {
+        return pedidos.reservado(productoId) + pedidos.reservadoPorSets(productoId);
     }
 
     /** Crea un lote nuevo y registra el movimiento de entrada. */
@@ -94,7 +134,7 @@ public class InventarioService {
             String motivo, boolean respetarReservas) {
         List<Lote> disponiblesPeps = lotes.disponiblesPeps(producto.getId());
         long fisicas = disponiblesPeps.stream().mapToLong(Lote::getCantidadDisponible).sum();
-        long permitidas = respetarReservas ? fisicas - pedidos.reservado(producto.getId()) : fisicas;
+        long permitidas = respetarReservas ? fisicas - reservado(producto.getId()) : fisicas;
         if (cantidad > permitidas) {
             throw new NegocioException("Stock insuficiente de " + producto.getNombre() + ": hay "
                     + Math.max(0, permitidas) + " disponibles y se piden " + cantidad + ".");
@@ -135,6 +175,9 @@ public class InventarioService {
         }
         Producto producto = productos.findById(ajuste.productoId())
                 .orElseThrow(() -> new NegocioException("Producto no encontrado."));
+        if (producto.isCombo()) {
+            throw new NegocioException("Un set no tiene existencias propias: ajusta los productos que incluye.");
+        }
         String motivo = ajuste.motivo() == null || ajuste.motivo().isBlank() ? null : ajuste.motivo().trim();
         if (ajuste.cantidad() > 0) {
             entrada(producto, ajuste.cantidad(), producto.getCosto(), TipoMovimiento.AJUSTE_ENTRADA, null, motivo);

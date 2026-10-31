@@ -5,6 +5,7 @@ import java.text.Normalizer;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -14,14 +15,18 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
 import com.vivanet.beautystock.dto.Dtos.CategoriaDto;
+import com.vivanet.beautystock.dto.Dtos.ComponenteDto;
+import com.vivanet.beautystock.dto.Dtos.ComponenteRequest;
 import com.vivanet.beautystock.dto.Dtos.HistorialPrecioDto;
 import com.vivanet.beautystock.dto.Dtos.ProductoDto;
 import com.vivanet.beautystock.dto.Dtos.ProductoRequest;
 import com.vivanet.beautystock.entity.Categoria;
+import com.vivanet.beautystock.entity.ComboItem;
 import com.vivanet.beautystock.entity.HistorialPrecio;
 import com.vivanet.beautystock.entity.Producto;
 import com.vivanet.beautystock.entity.ProductoImagen;
 import com.vivanet.beautystock.repository.CategoriaRepository;
+import com.vivanet.beautystock.repository.ComboItemRepository;
 import com.vivanet.beautystock.repository.HistorialPrecioRepository;
 import com.vivanet.beautystock.repository.ProductoImagenRepository;
 import com.vivanet.beautystock.repository.ProductoRepository;
@@ -37,10 +42,12 @@ public class ProductoService {
     private final InventarioService inventario;
     private final ConsecutivoService consecutivos;
     private final ConfiguracionService configuracion;
+    private final ComboItemRepository combos;
 
     public ProductoService(ProductoRepository productos, CategoriaRepository categorias,
             ProductoImagenRepository imagenes, HistorialPrecioRepository historial, InventarioService inventario,
-            ConsecutivoService consecutivos, ConfiguracionService configuracion) {
+            ConsecutivoService consecutivos, ConfiguracionService configuracion, ComboItemRepository combos) {
+        this.combos = combos;
         this.productos = productos;
         this.categorias = categorias;
         this.imagenes = imagenes;
@@ -81,7 +88,8 @@ public class ProductoService {
     /** Lista filtrada por texto (nombre, codigo, marca o categoria) y categoria. */
     @Transactional
     public List<ProductoDto> listar(String texto, Long categoriaId, boolean soloActivos) {
-        Map<Long, Existencias> existencias = inventario.existenciasDeTodos();
+        Map<Long, Existencias> existencias = inventario.existenciasConSets();
+        Map<Long, List<ComboItem>> sets = componentesPorSet();
         Map<Long, List<Long>> imagenesPorProducto = imagenesPorProducto();
         int porcentaje = configuracion.obtener().getPorcentajeIncremento();
         String buscado = normalizar(texto);
@@ -101,7 +109,7 @@ public class ProductoService {
                     continue;
                 }
             }
-            resultado.add(aDto(p, existencias.get(p.getId()), imagenesPorProducto.get(p.getId()), porcentaje));
+            resultado.add(aDto(p, existencias, sets.get(p.getId()), imagenesPorProducto.get(p.getId()), porcentaje));
         }
         return resultado;
     }
@@ -109,19 +117,29 @@ public class ProductoService {
     @Transactional
     public ProductoDto consultar(Long id) {
         Producto p = buscar(id);
-        return aDto(p, inventario.existenciasDeTodos().get(id), imagenesPorProducto().get(id),
-                configuracion.obtener().getPorcentajeIncremento());
+        return aDto(p, inventario.existenciasConSets(), p.isCombo() ? combos.deCombo(id) : null,
+                imagenesPorProducto().get(id), configuracion.obtener().getPorcentajeIncremento());
     }
 
     @Transactional
     public ProductoDto crear(ProductoRequest datos) {
         validarNoRepetido(datos, null);
+        boolean esSet = datos.componentes() != null && !datos.componentes().isEmpty();
+        Map<Producto, Integer> componentes = esSet ? leerComponentes(datos) : Map.of();
         Producto p = new Producto();
         p.setCodigo(consecutivos.siguiente("P"));
         copiar(datos, p);
-        p.setPrecioVenta(datos.precioVenta() > 0 ? datos.precioVenta() : precioSugerido(datos.costo()));
+        if (esSet) {
+            p.setCombo(true);
+            p.setStockMinimo(0);
+            p.setCosto(costoDe(componentes));
+            p.setPrecioVenta(datos.precioVenta() > 0 ? datos.precioVenta() : precioSeparadoDe(componentes));
+        } else {
+            p.setPrecioVenta(datos.precioVenta() > 0 ? datos.precioVenta() : precioSugerido(datos.costo()));
+        }
         copiarOferta(datos, p);
         productos.save(p);
+        componentes.forEach((producto, cantidad) -> combos.save(new ComboItem(p, producto, cantidad)));
         return consultar(p.getId());
     }
 
@@ -130,6 +148,13 @@ public class ProductoService {
         validarNoRepetido(datos, id);
         Producto p = buscar(id);
         copiar(datos, p);
+        if (p.isCombo()) {
+            Map<Producto, Integer> componentes = leerComponentes(datos);
+            combos.borrarDeCombo(id);
+            componentes.forEach((producto, cantidad) -> combos.save(new ComboItem(p, producto, cantidad)));
+            p.setStockMinimo(0);
+            p.setCosto(costoDe(componentes));
+        }
         cambiarPrecio(p, datos.precioVenta());
         copiarOferta(datos, p);
         return consultar(id);
@@ -162,8 +187,10 @@ public class ProductoService {
         }
         if (productos.usos(id) > 0) {
             throw new NegocioException("El producto " + p.getCodigo()
-                    + " tiene compras, ventas o movimientos registrados; no se puede eliminar. Déjalo desactivado.");
+                    + " tiene compras, ventas, pedidos o movimientos registrados, o está dentro de un set;"
+                    + " no se puede eliminar. Déjalo desactivado.");
         }
+        combos.borrarDeCombo(id);
         productos.borrarImagenes(id);
         productos.borrarHistorial(id);
         productos.delete(p);
@@ -239,6 +266,52 @@ public class ProductoService {
         return mapa;
     }
 
+    // ---------- Sets ----------
+
+    /** Componentes de todos los sets, agrupados por set. */
+    @Transactional(readOnly = true)
+    public Map<Long, List<ComboItem>> componentesPorSet() {
+        Map<Long, List<ComboItem>> mapa = new HashMap<>();
+        for (ComboItem c : combos.todos()) {
+            mapa.computeIfAbsent(c.getCombo().getId(), k -> new ArrayList<>()).add(c);
+        }
+        return mapa;
+    }
+
+    /** Valida los productos del set y junta los repetidos. */
+    private Map<Producto, Integer> leerComponentes(ProductoRequest datos) {
+        if (datos.componentes() == null || datos.componentes().isEmpty()) {
+            throw new NegocioException("Agrega los productos que incluye el set.");
+        }
+        Map<Long, Integer> cantidades = new LinkedHashMap<>();
+        for (ComponenteRequest c : datos.componentes()) {
+            cantidades.merge(c.productoId(), c.cantidad(), Integer::sum);
+        }
+        Map<Producto, Integer> resultado = new LinkedHashMap<>();
+        int unidades = 0;
+        for (Map.Entry<Long, Integer> e : cantidades.entrySet()) {
+            Producto producto = buscar(e.getKey());
+            if (producto.isCombo()) {
+                throw new NegocioException("Un set no puede incluir otro set (" + producto.getNombre() + ").");
+            }
+            resultado.put(producto, e.getValue());
+            unidades += e.getValue();
+        }
+        if (unidades < 2) {
+            throw new NegocioException("Un set debe incluir al menos 2 unidades.");
+        }
+        return resultado;
+    }
+
+    private static long costoDe(Map<Producto, Integer> componentes) {
+        return componentes.entrySet().stream().mapToLong(e -> e.getKey().getCosto() * e.getValue()).sum();
+    }
+
+    private static long precioSeparadoDe(Map<Producto, Integer> componentes) {
+        LocalDate hoy = LocalDate.now();
+        return componentes.entrySet().stream().mapToLong(e -> e.getKey().precioActual(hoy) * e.getValue()).sum();
+    }
+
     // ---------- Auxiliares ----------
 
     /** No permite dos productos con el mismo nombre y marca (sin importar tildes, mayusculas ni espacios). */
@@ -289,19 +362,35 @@ public class ProductoService {
         p.setOfertaHasta(datos.ofertaHasta());
     }
 
-    private ProductoDto aDto(Producto p, Existencias e, List<Long> imgs, int porcentaje) {
-        if (e == null) {
-            e = new Existencias(0, 0, 0);
+    private ProductoDto aDto(Producto p, Map<Long, Existencias> existencias, List<ComboItem> componentes,
+            List<Long> imgs, int porcentaje) {
+        Existencias e = existencias.getOrDefault(p.getId(), new Existencias(0, 0, 0));
+        LocalDate hoy = LocalDate.now();
+        List<ComponenteDto> incluye = new ArrayList<>();
+        long precioSeparado = 0;
+        if (p.isCombo() && componentes != null) {
+            long costo = 0;
+            for (ComboItem c : componentes) {
+                Producto q = c.getProducto();
+                long disponible = existencias.getOrDefault(q.getId(), new Existencias(0, 0, 0)).disponibles();
+                incluye.add(new ComponenteDto(q.getId(), q.getCodigo(), q.getNombre(), c.getCantidad(),
+                        q.precioActual(hoy), disponible));
+                costo += q.getCosto() * c.getCantidad();
+                precioSeparado += q.precioActual(hoy) * c.getCantidad();
+            }
+            // El costo de un set cambia cuando cambian los costos de sus productos.
+            p.setCosto(costo);
         }
         long sugerido = Math.round(p.getCosto() * (1 + porcentaje / 100.0) / 1000.0) * 1000;
         return new ProductoDto(p.getId(), p.getCodigo(), p.getNombre(), p.getMarca(),
                 p.getCategoria() != null ? p.getCategoria().getId() : null,
                 p.getCategoria() != null ? p.getCategoria().getNombre() : null,
                 p.getDescripcion(), p.getCosto(), p.getPrecioVenta(), sugerido, p.getStockMinimo(), p.isActivo(),
-                e.fisicas(), e.reservadas(), e.disponibles(), p.isActivo() && e.fisicas() <= p.getStockMinimo(),
+                e.fisicas(), e.reservadas(), e.disponibles(),
+                p.isActivo() && !p.isCombo() && e.fisicas() <= p.getStockMinimo(),
                 imgs != null ? imgs : List.of(),
                 p.getPrecioOferta(), p.getOfertaDesde(), p.getOfertaHasta(),
-                p.ofertaActiva(LocalDate.now()), p.precioActual(LocalDate.now()));
+                p.ofertaActiva(hoy), p.precioActual(hoy), p.isCombo(), incluye, precioSeparado);
     }
 
     /** Minusculas y sin tildes, para que "esika" encuentre "Ésika". */

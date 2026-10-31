@@ -3,8 +3,10 @@ package com.vivanet.beautystock.service;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -17,6 +19,7 @@ import com.vivanet.beautystock.dto.Dtos.PedidoRequest;
 import com.vivanet.beautystock.dto.Dtos.VentaItemRequest;
 import com.vivanet.beautystock.dto.Dtos.VentaRequest;
 import com.vivanet.beautystock.entity.Cliente;
+import com.vivanet.beautystock.entity.ComboItem;
 import com.vivanet.beautystock.entity.Configuracion;
 import com.vivanet.beautystock.entity.EstadoPedido;
 import com.vivanet.beautystock.entity.EstadoVenta;
@@ -26,6 +29,7 @@ import com.vivanet.beautystock.entity.PedidoItem;
 import com.vivanet.beautystock.entity.Producto;
 import com.vivanet.beautystock.entity.TipoEntrega;
 import com.vivanet.beautystock.entity.Venta;
+import com.vivanet.beautystock.repository.ComboItemRepository;
 import com.vivanet.beautystock.repository.PedidoRepository;
 
 /**
@@ -42,10 +46,12 @@ public class PedidoService {
     private final ClienteService clientes;
     private final ConsecutivoService consecutivos;
     private final ConfiguracionService configuracion;
+    private final ComboItemRepository combos;
 
     public PedidoService(PedidoRepository pedidos, ProductoService productos, InventarioService inventario,
             VentaService ventas, ClienteService clientes, ConsecutivoService consecutivos,
-            ConfiguracionService configuracion) {
+            ConfiguracionService configuracion, ComboItemRepository combos) {
+        this.combos = combos;
         this.pedidos = pedidos;
         this.productos = productos;
         this.inventario = inventario;
@@ -85,18 +91,35 @@ public class PedidoService {
             cantidades.merge(item.productoId(), item.cantidad(), Integer::sum);
         }
         long subtotal = 0;
+        // Unidades que necesita el pedido de cada producto: las sueltas mas las que van dentro de sets.
+        Map<Producto, Integer> necesarias = new LinkedHashMap<>();
+        Map<Producto, String> dentroDe = new HashMap<>();
         for (Map.Entry<Long, Integer> entrada : cantidades.entrySet()) {
             Producto producto = productos.buscar(entrada.getKey());
             if (!producto.isActivo()) {
                 throw new NegocioException(producto.getNombre() + " ya no esta disponible.");
             }
-            long disponibles = inventario.disponibles(producto.getId());
-            if (entrada.getValue() > disponibles) {
-                throw new NegocioException("Solo quedan " + disponibles + " unidades de " + producto.getNombre() + ".");
+            if (producto.isCombo()) {
+                for (ComboItem c : combos.deCombo(producto.getId())) {
+                    necesarias.merge(c.getProducto(), entrada.getValue() * c.getCantidad(), Integer::sum);
+                    dentroDe.putIfAbsent(c.getProducto(), producto.getNombre());
+                }
+            } else {
+                necesarias.merge(producto, entrada.getValue(), Integer::sum);
             }
             PedidoItem item = new PedidoItem(pedido, producto, entrada.getValue());
             pedido.getItems().add(item);
             subtotal += item.getTotal();
+        }
+        for (Map.Entry<Producto, Integer> n : necesarias.entrySet()) {
+            long disponibles = inventario.disponibles(n.getKey().getId());
+            if (n.getValue() > disponibles) {
+                String set = dentroDe.get(n.getKey());
+                throw new NegocioException(set != null
+                        ? "No alcanzan las unidades para " + set + ": de " + n.getKey().getNombre()
+                                + " solo quedan " + disponibles + "."
+                        : "Solo quedan " + disponibles + " unidades de " + n.getKey().getNombre() + ".");
+            }
         }
         long domicilio = datos.tipoEntrega() == TipoEntrega.DOMICILIO ? config.getCostoDomicilio() : 0;
         pedido.setSubtotal(subtotal);
@@ -163,8 +186,13 @@ public class PedidoService {
         StringBuilder m = new StringBuilder();
         m.append("Hola, quiero hacer este pedido (").append(p.getNumero()).append("):\n\n");
         for (PedidoItem i : p.getItems()) {
-            m.append("• ").append(i.getCantidad()).append(" x ").append(i.getProducto().getNombre())
-                    .append(" — ").append(Pesos.formato(i.getTotal())).append("\n");
+            m.append("• ").append(i.getCantidad()).append(" x ").append(i.getProducto().getNombre());
+            if (i.getProducto().isCombo()) {
+                m.append(" (set: ").append(combos.deCombo(i.getProducto().getId()).stream()
+                        .map(c -> (c.getCantidad() > 1 ? c.getCantidad() + " × " : "") + c.getProducto().getNombre())
+                        .collect(Collectors.joining(" + "))).append(")");
+            }
+            m.append(" — ").append(Pesos.formato(i.getTotal())).append("\n");
         }
         if (p.getCostoDomicilio() > 0) {
             m.append("• Domicilio — ").append(Pesos.formato(p.getCostoDomicilio())).append("\n");

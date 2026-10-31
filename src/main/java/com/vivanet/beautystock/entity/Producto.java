@@ -56,6 +56,10 @@ public class Producto {
 
     private boolean activo = true;
 
+    /** Set (combo): no tiene lotes; sus existencias salen de sus componentes (ver ComboItem). */
+    @Column(nullable = false, columnDefinition = "boolean default false")
+    private boolean combo;
+
     private LocalDateTime creadoEn = LocalDateTime.now();
 
     public Long getId() { return id; }
@@ -96,5 +100,7 @@ public class Producto {
     public void setStockMinimo(int stockMinimo) { this.stockMinimo = stockMinimo; }
     public boolean isActivo() { return activo; }
     public void setActivo(boolean activo) { this.activo = activo; }
+    public boolean isCombo() { return combo; }
+    public void setCombo(boolean combo) { this.combo = combo; }
     public LocalDateTime getCreadoEn() { return creadoEn; }
 }

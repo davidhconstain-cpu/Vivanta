@@ -3,7 +3,9 @@ package com.vivanet.beautystock.service;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -15,6 +17,7 @@ import com.vivanet.beautystock.dto.Dtos.VentaItemDto;
 import com.vivanet.beautystock.dto.Dtos.VentaItemRequest;
 import com.vivanet.beautystock.dto.Dtos.VentaRequest;
 import com.vivanet.beautystock.entity.Cliente;
+import com.vivanet.beautystock.entity.ComboItem;
 import com.vivanet.beautystock.entity.EstadoVenta;
 import com.vivanet.beautystock.entity.MetodoPago;
 import com.vivanet.beautystock.entity.PagoVenta;
@@ -25,6 +28,7 @@ import com.vivanet.beautystock.entity.Venta;
 import com.vivanet.beautystock.entity.VentaItem;
 import com.vivanet.beautystock.entity.VentaItemLote;
 import com.vivanet.beautystock.repository.ClienteRepository;
+import com.vivanet.beautystock.repository.ComboItemRepository;
 import com.vivanet.beautystock.repository.VentaRepository;
 import com.vivanet.beautystock.service.InventarioService.Consumo;
 
@@ -37,9 +41,11 @@ public class VentaService {
     private final ProductoService productos;
     private final InventarioService inventario;
     private final ConsecutivoService consecutivos;
+    private final ComboItemRepository combos;
 
     public VentaService(VentaRepository ventas, ClienteRepository clientes, ProductoService productos,
-            InventarioService inventario, ConsecutivoService consecutivos) {
+            InventarioService inventario, ConsecutivoService consecutivos, ComboItemRepository combos) {
+        this.combos = combos;
         this.ventas = ventas;
         this.clientes = clientes;
         this.productos = productos;
@@ -87,8 +93,17 @@ public class VentaService {
 
             // Las unidades reservadas por pedidos pendientes no se pueden vender.
             // (Un pedido que se confirma deja de estar pendiente antes de llegar aqui.)
-            List<Consumo> consumos = inventario.salidaPeps(producto, itemDatos.cantidad(), TipoMovimiento.VENTA,
-                    venta.getNumero(), null, true);
+            // Un set saca del inventario las unidades de cada producto que incluye.
+            List<Consumo> consumos = new ArrayList<>();
+            if (producto.isCombo()) {
+                for (ComboItem c : combos.deCombo(producto.getId())) {
+                    consumos.addAll(inventario.salidaPeps(c.getProducto(), itemDatos.cantidad() * c.getCantidad(),
+                            TipoMovimiento.VENTA, venta.getNumero(), "Set " + producto.getNombre(), true));
+                }
+            } else {
+                consumos = inventario.salidaPeps(producto, itemDatos.cantidad(), TipoMovimiento.VENTA,
+                        venta.getNumero(), null, true);
+            }
             long costo = 0;
             for (Consumo consumo : consumos) {
                 item.getLotes().add(new VentaItemLote(item, consumo.lote(), consumo.cantidad()));
@@ -159,11 +174,15 @@ public class VentaService {
             throw new NegocioException("La venta ya esta anulada.");
         }
         for (VentaItem item : venta.getItems()) {
+            // Las unidades vuelven a sus lotes; el movimiento queda en cada producto
+            // (en un set, en cada producto que incluia).
+            Map<Producto, Integer> devueltas = new LinkedHashMap<>();
             for (VentaItemLote parte : item.getLotes()) {
                 inventario.devolver(parte.getLote(), parte.getCantidad());
+                devueltas.merge(parte.getLote().getProducto(), parte.getCantidad(), Integer::sum);
             }
-            inventario.registrarMovimiento(item.getProducto(), TipoMovimiento.ANULACION_VENTA, item.getCantidad(),
-                    venta.getNumero(), motivo);
+            devueltas.forEach((producto, cantidad) -> inventario.registrarMovimiento(producto,
+                    TipoMovimiento.ANULACION_VENTA, cantidad, venta.getNumero(), motivo));
         }
         venta.setEstado(EstadoVenta.ANULADA);
         venta.setMotivoAnulacion(motivo.trim());

@@ -20,4 +20,11 @@ public interface PedidoRepository extends JpaRepository<Pedido, Long> {
 
     @Query("select coalesce(sum(i.cantidad), 0) from PedidoItem i where i.producto.id = :productoId and i.pedido.estado = com.vivanet.beautystock.entity.EstadoPedido.PENDIENTE")
     long reservado(Long productoId);
+
+    /** Unidades de cada producto apartadas por sets pedidos y pendientes: [productoId, cantidad]. */
+    @Query("select c.producto.id, sum(i.cantidad * c.cantidad) from PedidoItem i, ComboItem c where c.combo = i.producto and i.pedido.estado = com.vivanet.beautystock.entity.EstadoPedido.PENDIENTE group by c.producto.id")
+    List<Object[]> reservasPorSets();
+
+    @Query("select coalesce(sum(i.cantidad * c.cantidad), 0) from PedidoItem i, ComboItem c where c.combo = i.producto and c.producto.id = :productoId and i.pedido.estado = com.vivanet.beautystock.entity.EstadoPedido.PENDIENTE")
+    long reservadoPorSets(Long productoId);
 }

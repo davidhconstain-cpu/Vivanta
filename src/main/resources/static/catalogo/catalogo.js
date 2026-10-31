@@ -85,7 +85,8 @@ const ICONOS_REDES = {
   tiktok: '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M16.6 2h-3.3v13.4a2.9 2.9 0 1 1-2.9-2.9c.3 0 .6 0 .8.1V9.2l-.8-.1a6.2 6.2 0 1 0 6.2 6.2V8.6a8 8 0 0 0 4.7 1.5V6.8a4.7 4.7 0 0 1-4.7-4.8z"/></svg>',
   compartir: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="m8.6 13.5 6.8 4M15.4 6.5l-6.8 4"/></svg>',
 };
-const ICONO_OFERTA = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12V4h8l10 10-8 8L3 12z"/><circle cx="7.5" cy="8.5" r="1"/></svg>';
+const ICONO_SET = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="8" width="18" height="13" rx="2"/><path d="M12 8v13M3 12h18M12 8c-1.5-3-5-4-5-1.5S10 8 12 8zm0 0c1.5-3 5-4 5-1.5S14 8 12 8z"/></svg>';
+const ICONO_OFERTA ='<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12V4h8l10 10-8 8L3 12z"/><circle cx="7.5" cy="8.5" r="1"/></svg>';
 
 function dibujarPie(n) {
   const red = (clase, nombre, url) => `<a href="${esc(url)}" target="_blank" rel="noopener"><span class="circulo red-${clase}">${ICONOS_REDES[clase]}</span>${nombre}</a>`;
@@ -133,6 +134,7 @@ function pantallaProductos() {
         <div class="chips" role="group" aria-label="Categorías">
           <button type="button" data-cat="" aria-pressed="${!categoria}">Todos</button>
           ${catalogo.productos.some((p) => p.precioAntes) ? `<button type="button" class="chip-oferta" data-cat="${OFERTAS}" aria-pressed="${categoria === OFERTAS}">${ICONO_OFERTA}Ofertas</button>` : ''}
+          ${catalogo.productos.some((p) => p.combo) ? `<button type="button" class="chip-set" data-cat="${SETS}" aria-pressed="${categoria === SETS}">${ICONO_SET}Sets</button>` : ''}
           ${categorias.map((c) => `<button type="button" data-cat="${esc(c)}" aria-pressed="${c === categoria}">${esc(c)}</button>`).join('')}
         </div>
       </div>
@@ -151,19 +153,25 @@ function pantallaProductos() {
 }
 
 const OFERTAS = "__ofertas__";
+const SETS = '__sets__';
 const descuento = (p) => Math.round((1 - p.precio / p.precioAntes) * 100);
 const fechaLarga = (d) => new Date(d + "T00:00").toLocaleDateString("es-CO", { day: "numeric", month: "long" });
+/** Precio tachado: el normal si hay oferta; en un set sin oferta, lo que costaria por separado. */
+const tachado = (p) => p.precioAntes || (p.combo && p.precioSeparado > p.precio ? p.precioSeparado : 0);
 
-/** Precio de la tarjeta: con oferta, el normal tachado al lado y hasta cuando dura. */
+/** Precio de la tarjeta: con oferta o set, el precio anterior tachado y lo que se ahorra. */
 function precioHtml(p) {
-  if (!p.precioAntes) return `<p class="precio">${cop(p.precio)}</p>`;
-  return `<p class="precio">${cop(p.precio)} <s class="antes">${cop(p.precioAntes)}</s></p>
-      ${p.ofertaHasta ? `<p class="vigencia">Hasta el ${fechaLarga(p.ofertaHasta)}</p>` : ''}`;
+  const antes = tachado(p);
+  if (!antes) return `<p class="precio">${cop(p.precio)}</p>`;
+  return `<p class="precio">${cop(p.precio)} <s class="antes">${cop(antes)}</s></p>
+      ${p.precioAntes && p.ofertaHasta ? `<p class="vigencia">Hasta el ${fechaLarga(p.ofertaHasta)}</p>`
+        : !p.precioAntes ? `<p class="vigencia">Ahorras ${cop(antes - p.precio)}</p>` : ''}`;
 }
 
 function dibujarGrilla() {
   const texto = normalizar(busqueda);
-  const lista = catalogo.productos.filter((p) => (!categoria || p.categoria === categoria || (categoria === OFERTAS && p.precioAntes))
+  const lista = catalogo.productos.filter((p) => (!categoria || p.categoria === categoria
+      || (categoria === OFERTAS && p.precioAntes) || (categoria === SETS && p.combo))
     && normalizar(`${p.nombre} ${p.marca} ${p.categoria || ''}`).includes(texto));
   const hayOfertas = catalogo.productos.some((p) => p.precioAntes && p.disponible > 0);
   const avisoOfertas = hayOfertas && !categoria && !texto
@@ -179,9 +187,11 @@ function dibujarGrilla() {
       </button>
       <div class="cuerpo">
         ${p.categoria ? `<span class="categoria-prod">${esc(p.categoria)}</span>` : ''}
-        ${p.precioAntes && !agotado ? `<span class="pastilla-oferta">Oferta −${descuento(p)} %</span>` : ''}
+        ${p.combo || (p.precioAntes && !agotado) ? `<div class="pastillas">
+          ${p.combo ? '<span class="pastilla-set">Set</span>' : ''}
+          ${p.precioAntes && !agotado ? `<span class="pastilla-oferta">Oferta −${descuento(p)} %</span>` : ''}</div>` : ''}
         <h2>${esc(p.nombre)}</h2>
-        <p class="marca-prod">${esc(p.marca)}</p>
+        ${p.combo ? `<p class="incluye">Incluye: ${esc(p.incluye)}</p>` : `<p class="marca-prod">${esc(p.marca)}</p>`}
         ${precioHtml(p)}
         <div class="acciones">
           ${agotado ? '<button type="button" disabled>No disponible</button>'
@@ -237,8 +247,10 @@ function verDetalle(p) {
     <div class="modal-cabecera"><h2>${esc(p.nombre)}</h2><button class="icono" data-cerrar aria-label="Cerrar">✕</button></div>
     <div class="detalle-fotos">${p.imagenes.length ? p.imagenes.map((i) => `<img src="/api/public/imagenes/${i}" alt="">`).join('') : `<img src="${foto(p)}" alt="">`}</div>
     <p class="suave">${esc(p.marca)}${p.categoria ? ' · ' + esc(p.categoria) : ''}</p>
+    ${p.combo ? `<p style="margin:0"><strong>Este set incluye:</strong> ${esc(p.incluye)}</p>` : ''}
     ${p.descripcion ? `<p style="white-space:pre-line">${esc(p.descripcion)}</p>` : ''}
-    <p class="cifra" style="font-size:2rem;margin:0">${p.precioAntes ? `<s class="antes">${cop(p.precioAntes)}</s> ` : ""}${cop(p.precio)}</p>
+    <p class="cifra" style="font-size:2rem;margin:0">${tachado(p) ? `<s class="antes">${cop(tachado(p))}</s> ` : ''}${cop(p.precio)}</p>
+    ${p.combo && !p.precioAntes && tachado(p) ? `<p class="vigencia" style="margin:0">Ahorras ${cop(tachado(p) - p.precio)} comprando el set</p>` : ''}
     ${p.precioAntes ? `<p class="vigencia" style="margin:0">Oferta −${descuento(p)} %${p.ofertaHasta ? " · hasta el " + fechaLarga(p.ofertaHasta) : ""}</p>` : ""}
     <div class="modal-pie">${p.disponible > 0 ? `<button class="primario" data-mas="${p.id}" data-cerrar>Agregar al pedido</button>` : '<span class="etiqueta agotado">Agotado</span>'}</div>
   </div>`;

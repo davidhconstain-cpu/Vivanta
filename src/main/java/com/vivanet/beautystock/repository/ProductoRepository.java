@@ -14,13 +14,14 @@ public interface ProductoRepository extends JpaRepository<Producto, Long> {
 
     List<Producto> findByActivoTrueOrderByNombreAsc();
 
-    /** Veces que el producto aparece en lotes, movimientos, compras, ventas o pedidos. */
+    /** Veces que el producto aparece en lotes, movimientos, compras, ventas, pedidos o sets. */
     @Query("""
             select (select count(l) from Lote l where l.producto.id = :id)
                  + (select count(m) from MovimientoInventario m where m.producto.id = :id)
                  + (select count(c) from CompraItem c where c.producto.id = :id)
                  + (select count(v) from VentaItem v where v.producto.id = :id)
                  + (select count(p) from PedidoItem p where p.producto.id = :id)
+                 + (select count(k) from ComboItem k where k.producto.id = :id)
             from Producto x where x.id = :id""")
     long usos(Long id);
 

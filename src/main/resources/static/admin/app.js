@@ -387,6 +387,7 @@ async function inventario() {
       <div><h1>Inventario</h1><p class="sub">Existencias por producto y por lote</p></div>
       <div class="acciones">
         <button type="button" id="btn-categorias">Categorías</button>
+        <button type="button" class="contorno" id="btn-nuevo-set">${icono('mas', 18)}Nuevo set</button>
         <button type="button" class="contorno" id="btn-nuevo">${icono('mas', 18)}Nuevo producto</button>
         <a class="boton primario" href="#compras">Registrar compra</a>
       </div>
@@ -394,6 +395,7 @@ async function inventario() {
     <div class="pestanas" role="tablist"><button class="activo" data-pestana="productos">Productos</button><button data-pestana="movimientos">Movimientos</button></div>
     <div id="contenido-inventario" style="display:flex;flex-direction:column;gap:20px"></div>`;
   $('#btn-nuevo').addEventListener('click', () => formularioProducto(null, inventario));
+  $('#btn-nuevo-set').addEventListener('click', () => intentar(() => formularioSet(null, inventario)));
   $('#btn-categorias').addEventListener('click', () => gestionarCategorias(inventario));
   $$('[data-pestana]').forEach((b) => b.addEventListener('click', () => {
     $$('[data-pestana]').forEach((x) => x.classList.toggle('activo', x === b));
@@ -415,6 +417,7 @@ async function listaProductos() {
         <button type="button" class="chip" data-filtro="activos" aria-pressed="true">Todos</button>
         <button type="button" class="chip" data-filtro="bajo" aria-pressed="false">Stock bajo</button>
         <button type="button" class="chip" data-filtro="agotados" aria-pressed="false">Agotados</button>
+        <button type="button" class="chip" data-filtro="sets" aria-pressed="false">Sets</button>
         <button type="button" class="chip" data-filtro="inactivos" aria-pressed="false">Desactivados</button>
       </div>
     </div>
@@ -425,7 +428,7 @@ async function listaProductos() {
     const texto = normalizar($('#buscar-inv').value);
     const categoria = Number($('#filtro-categoria').value) || null;
     const lista = todos.filter((p) => ({
-      activos: p.activo, bajo: p.activo && p.stockBajo && p.existencias > 0, agotados: p.activo && p.existencias === 0, inactivos: !p.activo,
+      activos: p.activo, bajo: p.activo && p.stockBajo && p.existencias > 0, agotados: p.activo && p.existencias === 0, sets: p.activo && p.combo, inactivos: !p.activo,
     }[filtro])
       && (!categoria || p.categoriaId === categoria)
       && (!texto || normalizar(`${p.nombre} ${p.codigo} ${p.marca} ${p.categoriaNombre || ''}`).includes(texto)));
@@ -435,10 +438,10 @@ async function listaProductos() {
         <caption class="suave" style="text-align:left;padding:10px 14px">Toca un producto para ver sus lotes y opciones</caption>
         <thead><tr><th>Producto</th><th>Marca</th><th>Categoría</th><th class="num">Existencia</th><th class="num">Mínimo</th><th class="num">Costo vigente</th><th class="num">Precio</th><th>Estado</th></tr></thead>
         <tbody>${lista.map((p) => `<tr class="seleccionable ${p.activo ? '' : 'inactivo'} ${p.id === seleccionado ? 'seleccionada' : ''}" data-id="${p.id}" tabindex="0">
-          <td><div class="producto-celda"><img class="miniatura" src="${fotoProducto(p)}" alt=""><div><strong>${esc(p.nombre)}</strong><span>${esc(p.codigo)}</span></div></div></td>
+          <td><div class="producto-celda"><img class="miniatura" src="${fotoProducto(p)}" alt=""><div><strong>${esc(p.nombre)}</strong><span>${esc(p.codigo)}${p.combo ? ' · <span class="etiqueta numero">Set</span>' : ''}</span></div></div></td>
           <td>${esc(p.marca)}</td><td>${esc(p.categoriaNombre || '—')}</td>
-          <td class="num">${p.existencias}${p.reservado ? ` <span class="suave" title="Reservadas por pedidos">(${p.reservado} res.)</span>` : ''}</td>
-          <td class="num">${p.stockMinimo}</td><td class="num">${cop(p.costo)}</td><td class="num">${p.ofertaActiva
+          <td class="num">${p.combo ? `<span title="Sets que se pueden armar con lo que hay">${p.disponible}</span>` : p.existencias}${p.reservado ? ` <span class="suave" title="Reservadas por pedidos">(${p.reservado} res.)</span>` : ''}</td>
+          <td class="num">${p.combo ? '—' : p.stockMinimo}</td><td class="num">${cop(p.costo)}</td><td class="num">${p.ofertaActiva
             ? `<s class="suave">${cop(p.precioVenta)}</s><br><strong class="precio-oferta">${cop(p.precioOferta)}</strong>` : cop(p.precioVenta)}</td>
           <td>${estadoProducto(p)}</td></tr>`).join('')}</tbody>
       </table><div class="pie-tabla">Mostrando ${lista.length} de ${activos} productos activos</div></div>`
@@ -463,6 +466,7 @@ async function listaProductos() {
 
 /** Lotes y acciones del producto elegido (debajo de la tabla, como en el diseno). */
 async function detalleProducto(p) {
+  if (p.combo) return detalleSet(p);
   const lotes = await api(`/api/inventario/${p.id}/lotes`);
   const recargar = inventario;
   $('#detalle-producto').innerHTML = `
@@ -508,6 +512,130 @@ async function detalleProducto(p) {
   };
   $$('#detalle-producto [data-accion]').forEach((b) => b.addEventListener('click', acciones[b.dataset.accion]));
   $('#detalle-producto').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+/** Un set no tiene lotes: se muestra lo que incluye y para cuantos sets alcanza cada producto. */
+function detalleSet(p) {
+  const recargar = inventario;
+  const ahorro = p.precioSeparado - p.precioActual;
+  $('#detalle-producto').innerHTML = `
+    <div class="tarjeta" style="display:flex;flex-direction:column;gap:16px">
+      <div class="fila" style="justify-content:space-between">
+        <h2 style="margin:0">Qué incluye ${esc(p.nombre)}</h2>
+        <span class="suave">Alcanza para <strong>${p.disponible}</strong> set(s)${p.reservado ? ` · ${p.reservado} pedido(s) pendiente(s)` : ''}</span>
+      </div>
+      <div class="acciones-producto">
+        <button type="button" class="pequeno" data-accion="editar">Editar set</button>
+        <button type="button" class="pequeno" data-accion="fotos">Fotos (${p.imagenes.length})</button>
+        <button type="button" class="pequeno" data-accion="historial">Historial de precios</button>
+        <button type="button" class="pequeno ${p.activo ? 'peligro' : ''}" data-accion="activo">${p.activo ? 'Desactivar' : 'Activar'}</button>
+        ${p.activo ? '' : '<button type="button" class="pequeno peligro" data-accion="eliminar">Eliminar</button>'}
+      </div>
+      <p style="margin:0">Precio del set <strong>${cop(p.precioActual)}</strong> · por separado ${cop(p.precioSeparado)}${ahorro > 0 ? ` · el cliente ahorra ${cop(ahorro)}` : ''} · costo ${cop(p.costo)} · utilidad <strong>${cop(p.precioActual - p.costo)}</strong></p>
+      <p class="suave" style="margin:0">El set no tiene existencias propias: al venderlo salen del inventario los productos que incluye (PEPS). Para tener más sets, registra la entrada de esos productos.</p>
+      <div class="tabla-contenedor"><table>
+        <thead><tr><th>Producto</th><th class="num">Por set</th><th class="num">Disponibles</th><th class="num">Alcanza para</th><th class="num">Precio suelto</th></tr></thead>
+        <tbody>${p.componentes.map((c) => `<tr><td>${esc(c.nombre)} <span class="suave">${esc(c.codigo)}</span></td><td class="num">${c.cantidad}</td><td class="num">${c.disponible}</td><td class="num">${Math.floor(c.disponible / c.cantidad)} set(s)</td><td class="num">${cop(c.precioActual)}</td></tr>`).join('')}</tbody>
+      </table></div>
+    </div>`;
+  const acciones = {
+    editar: () => intentar(() => formularioSet(p, recargar)),
+    fotos: () => gestionarImagenes(p.id, recargar),
+    historial: () => historialPrecios(p),
+    activo: () => intentar(async () => {
+      await api(`/api/productos/${p.id}/activo`, { metodo: 'PUT', datos: { activo: !p.activo } });
+      avisar(p.activo ? 'Set desactivado: ya no aparece en el catálogo' : 'Set activado');
+      recargar();
+    }),
+    eliminar: () => {
+      if (!confirm(`¿Eliminar definitivamente el set ${p.codigo} «${p.nombre}»? Solo se puede si nunca se vendió ni se pidió.`)) return;
+      intentar(async () => {
+        await api(`/api/productos/${p.id}`, { metodo: 'DELETE' });
+        avisar('Set eliminado');
+        recargar();
+      });
+    },
+  };
+  $$('#detalle-producto [data-accion]').forEach((b) => b.addEventListener('click', acciones[b.dataset.accion]));
+  $('#detalle-producto').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+/** Crear o editar un set: se eligen los productos que incluye y su precio. */
+async function formularioSet(p, recargar) {
+  const disponibles = (await api('/api/productos?soloActivos=true')).filter((x) => !x.combo);
+  if (disponibles.length < 1) { avisar('Primero crea los productos que va a incluir el set', 'error'); return; }
+  let filas = p ? p.componentes.map((c) => ({ productoId: c.productoId, cantidad: c.cantidad })) : [{ productoId: '', cantidad: 1 }, { productoId: '', cantidad: 1 }];
+  const opciones = (elegido) => '<option value="">Elige un producto</option>' + disponibles.map((x) =>
+    `<option value="${x.id}" ${x.id === elegido ? 'selected' : ''}>${esc(x.nombre)} · ${esc(x.marca)} (${x.disponible} disp.)</option>`).join('');
+  const m = abrirModal(p ? 'Editar set ' + esc(p.codigo) : 'Nuevo set', `
+    <form id="form-set" class="campos">
+      <label class="ancho">Nombre del set * <input name="nombre" required value="${esc(p?.nombre)}" placeholder="Ej. Set Kaiak Clásico + Aventura"></label>
+      <label>Marca * <input name="marca" required value="${esc(p?.marca)}"></label>
+      <label>Categoría <select name="categoriaId" data-numero><option value="">Sin categoría</option>
+        ${categoriasCache.map((c) => `<option value="${c.id}" ${c.id === p?.categoriaId ? 'selected' : ''}>${esc(c.nombre)}</option>`).join('')}</select></label>
+      <div class="ancho"><strong>Productos que incluye</strong><div id="filas-set" style="display:flex;flex-direction:column;gap:8px;margin-top:8px"></div>
+        <button type="button" class="pequeno" id="agregar-fila" style="margin-top:8px">${icono('mas', 16)}Agregar producto</button></div>
+      <label>Precio del set (COP) <input name="precioVenta" type="number" min="0" step="1" data-numero value="${p?.precioVenta ?? ''}" placeholder="Vacío = suma por separado"></label>
+      <div id="resumen-set" class="suave" style="align-self:end"></div>
+      <label class="ancho">Descripción <textarea name="descripcion">${esc(p?.descripcion)}</textarea></label>
+      <label class="ancho">Fotos ${p?.imagenes.length ? `(ya tiene ${p.imagenes.length}; las nuevas se agregan)` : '(una foto del set armado se ve mejor en el catálogo)'}
+        <input type="file" id="fotos-set" accept="image/*" multiple></label>
+    </form>
+    <div class="modal-pie"><button data-cerrar>Cancelar</button><button class="primario" form="form-set">Guardar set</button></div>`);
+  const form = $('#form-set', m);
+  const elegidos = () => filas.filter((f) => f.productoId).map((f) => ({ ...f, p: disponibles.find((x) => x.id === f.productoId) })).filter((f) => f.p);
+  const resumir = () => {
+    const lista = elegidos();
+    const separado = lista.reduce((s, f) => s + f.p.precioActual * f.cantidad, 0);
+    const costo = lista.reduce((s, f) => s + f.p.costo * f.cantidad, 0);
+    const alcanza = lista.length ? Math.min(...lista.map((f) => Math.floor(f.p.disponible / f.cantidad))) : 0;
+    const precio = Number(form.precioVenta.value) || separado;
+    $('#resumen-set', m).innerHTML = lista.length ? `Por separado: <strong>${cop(separado)}</strong>${precio < separado ? ` · ahorro ${Math.round((1 - precio / separado) * 100)} %` : ''}<br>
+      Costo: ${cop(costo)} · utilidad: <strong style="color:${precio < costo ? 'var(--peligro)' : 'inherit'}">${cop(precio - costo)}</strong><br>Alcanza para ${alcanza} set(s) hoy` : 'Elige los productos del set';
+    return { costo, precio };
+  };
+  const dibujarFilas = () => {
+    $('#filas-set', m).innerHTML = filas.map((f, i) => `<div class="fila" style="gap:8px;flex-wrap:nowrap">
+      <select data-fila="${i}" style="flex:1 1 auto;min-width:0">${opciones(f.productoId)}</select>
+      <input data-cant="${i}" type="number" min="1" step="1" value="${f.cantidad}" style="width:76px" aria-label="Cantidad por set">
+      <button type="button" class="icono" data-quitar="${i}" aria-label="Quitar" ${filas.length <= 1 ? 'disabled' : ''}>✕</button></div>`).join('');
+    $$('[data-fila]', m).forEach((s) => s.addEventListener('change', () => {
+      filas[s.dataset.fila].productoId = Number(s.value) || '';
+      const primero = elegidos()[0];
+      if (primero && !form.marca.value) form.marca.value = primero.p.marca;
+      resumir();
+    }));
+    $$('[data-cant]', m).forEach((c) => c.addEventListener('input', () => { filas[c.dataset.cant].cantidad = Math.max(1, Number(c.value) || 1); resumir(); }));
+    $$('[data-quitar]', m).forEach((b) => b.addEventListener('click', () => { filas.splice(Number(b.dataset.quitar), 1); dibujarFilas(); }));
+    resumir();
+  };
+  $('#agregar-fila', m).addEventListener('click', () => { filas.push({ productoId: '', cantidad: 1 }); dibujarFilas(); });
+  form.precioVenta.addEventListener('input', resumir);
+  dibujarFilas();
+  form.addEventListener('submit', (e) => {
+    e.preventDefault();
+    intentar(async () => {
+      const lista = elegidos();
+      if (!lista.length) throw new Error('Elige los productos que incluye el set.');
+      const { costo, precio } = resumir();
+      if (precio < costo && !confirm(`El precio del set (${cop(precio)}) queda por debajo del costo (${cop(costo)}). Perderías dinero en cada venta.\n\n¿Guardar de todas formas?`)) return;
+      const datos = leerFormulario(form);
+      Object.assign(datos, {
+        costo: 0, stockMinimo: 0, precioVenta: datos.precioVenta ?? 0,
+        precioOferta: p?.precioOferta ?? null, ofertaDesde: p?.ofertaDesde ?? null, ofertaHasta: p?.ofertaHasta ?? null,
+        componentes: lista.map((f) => ({ productoId: f.productoId, cantidad: f.cantidad })),
+      });
+      if (p && !datos.precioVenta) datos.precioVenta = lista.reduce((s, f) => s + f.p.precioActual * f.cantidad, 0);
+      const guardado = await api(p ? '/api/productos/' + p.id : '/api/productos', { metodo: p ? 'PUT' : 'POST', datos });
+      const fotos = $('#fotos-set', m).files;
+      if (fotos.length) {
+        await api(`/api/productos/${guardado.id}/imagenes`, { metodo: 'POST', formulario: await formularioFotos(fotos) });
+      }
+      cerrarModal();
+      avisar(`Set guardado · alcanza para ${guardado.disponible} set(s)`);
+      recargar();
+    });
+  });
 }
 
 /** "del 1 al 15 de noviembre", "hasta el 15 de noviembre" o "sin fecha de fin". */
@@ -710,7 +838,9 @@ function estadoCompra(c) {
 let compraParaCorregir = null;
 
 async function compras() {
-  const [productosLista, numero] = await Promise.all([api('/api/productos?soloActivos=true'), api('/api/consecutivos/C')]);
+  const [todosLosProductos, numero] = await Promise.all([api('/api/productos?soloActivos=true'), api('/api/consecutivos/C')]);
+  // Los sets no se compran: se compran los productos que incluyen.
+  const productosLista = todosLosProductos.filter((p) => !p.combo);
   const base = compraParaCorregir;
   compraParaCorregir = null;
   vista().innerHTML = `
@@ -1073,7 +1203,7 @@ async function nuevaVenta() {
       const quedan = p.disponible - enCarrito;
       return `<li>
         <img class="miniatura" src="${fotoProducto(p)}" alt="">
-        <div class="texto"><strong>${esc(p.nombre)}</strong><span>${esc(p.codigo)} · ${esc(p.marca)} · ${p.disponible ? p.disponible + ' disponibles' : 'sin existencias'}</span></div>
+        <div class="texto"><strong>${esc(p.nombre)}${p.combo ? ' <span class="etiqueta numero">Set</span>' : ''}</strong><span>${esc(p.codigo)} · ${esc(p.marca)} · ${p.disponible ? p.disponible + (p.combo ? ' sets disponibles' : ' disponibles') : 'sin existencias'}</span></div>
         ${p.disponible ? `<span class="precio">${p.ofertaActiva ? '<span class="etiqueta numero">Oferta</span> ' : ''}${cop(p.precioActual)}</span>` : '<span class="etiqueta agotado">Agotado</span>'}
         <button type="button" class="contorno pequeno" data-agregar="${p.id}" ${quedan > 0 ? '' : 'disabled'}>Agregar</button>
       </li>`;
