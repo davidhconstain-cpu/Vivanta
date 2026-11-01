@@ -70,7 +70,7 @@ public class ProductoService {
     @Transactional(readOnly = true)
     public List<CategoriaDto> categorias() {
         return categorias.findAllByOrderByNombreAsc().stream()
-                .map(c -> new CategoriaDto(c.getId(), c.getNombre()))
+                .map(c -> new CategoriaDto(c.getId(), c.getNombre(), c.isDestacada(), c.getImagenId()))
                 .toList();
     }
 
@@ -80,7 +80,8 @@ public class ProductoService {
                 .orElseThrow(() -> new NegocioException("Categoria no encontrada."));
         categoria.setNombre(nombre.trim());
         categoria = categorias.save(categoria);
-        return new CategoriaDto(categoria.getId(), categoria.getNombre());
+        return new CategoriaDto(categoria.getId(), categoria.getNombre(), categoria.isDestacada(),
+                categoria.getImagenId());
     }
 
     // ---------- Productos ----------

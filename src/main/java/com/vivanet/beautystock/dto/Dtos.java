@@ -28,7 +28,21 @@ public final class Dtos {
 
     // ---------- Productos ----------
 
-    public record CategoriaDto(Long id, @NotBlank String nombre) {
+    public record CategoriaDto(Long id, @NotBlank String nombre,
+            /** Destacada en el catalogo y su foto (ImagenCatalogo), si tiene. */
+            boolean destacada, Long imagenId) {
+    }
+
+    // ---------- Contenido del catalogo ----------
+
+    public record PromocionDto(Long id, int orden, String marca, @NotBlank String titulo, String texto,
+            Long productoId, boolean activa, Long imagenId) {
+    }
+
+    public record PromocionPublicaDto(String marca, String titulo, String texto, Long productoId, String imagenUrl) {
+    }
+
+    public record CategoriaDestacadaDto(String nombre, String imagenUrl) {
     }
 
     public record ProductoRequest(
@@ -203,12 +217,14 @@ public final class Dtos {
             boolean catalogoHabilitado, boolean mostrarAgotados, String notasRecibo,
             boolean reciboMostrarLogo, boolean reciboMostrarDireccion, boolean reciboMostrarTelefono,
             boolean reciboMostrarCliente, boolean tieneLogo,
-            @Min(0) long metaVentasMes, @Min(0) long metaUtilidadMes) {
+            @Min(0) long metaVentasMes, @Min(0) long metaUtilidadMes,
+            /** Domicilio gratis desde este valor del pedido (0 = nunca). */
+            @Min(0) long envioGratisDesde) {
     }
 
     public record NegocioPublicoDto(String nombreNegocio, String telefono, String whatsapp, String direccion,
             String correo, String horarios, String instagram, String facebook, String tiktok,
-            long costoDomicilio, boolean tieneLogo) {
+            long costoDomicilio, boolean tieneLogo, long envioGratisDesde) {
     }
 
     public record ProductoCatalogoDto(Long id, String nombre, String marca, String categoria, String descripcion,
@@ -224,7 +240,8 @@ public final class Dtos {
     public record ProductoDelSetDto(String nombre, int cantidad, long precio, Long imagenId) {
     }
 
-    public record CatalogoDto(boolean habilitado, NegocioPublicoDto negocio, List<ProductoCatalogoDto> productos) {
+    public record CatalogoDto(boolean habilitado, NegocioPublicoDto negocio, List<ProductoCatalogoDto> productos,
+            List<PromocionPublicaDto> promociones, List<CategoriaDestacadaDto> categoriasDestacadas) {
     }
 
     // ---------- Panel ----------

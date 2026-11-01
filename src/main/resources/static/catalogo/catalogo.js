@@ -49,8 +49,13 @@ async function iniciar() {
   }
   const n = catalogo.negocio;
   document.title = 'Catálogo · ' + n.nombreNegocio;
-  if (n.tieneLogo) $('#banner').src = '/api/public/logo';
+  if (n.tieneLogo) { $('#banner').src = '/api/public/logo'; $('#menu-logo').src = '/api/public/logo'; }
+  if (n.envioGratisDesde > 0) {
+    $('#anuncio').innerHTML = `<span class="destello">✦</span><span>Envío gratis en compras desde</span><strong>${cop(n.envioGratisDesde)}</strong><span class="destello">✦</span>`;
+    $('#anuncio').hidden = false;
+  }
   dibujarPie(n);
+  dibujarMenu(n);
 
   // Quita del pedido productos que ya no existen.
   for (const id of Object.keys(carrito)) if (!producto(id)) delete carrito[id];
@@ -78,48 +83,91 @@ function mantenimiento() {
   </div></div>`;
 }
 
-/** Logos de las redes (dibujados en SVG para no depender de otros sitios). */
-const ICONOS_REDES = {
-  whatsapp: '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2.2A9.8 9.8 0 0 0 3.6 17l-1.4 5 5.2-1.4A9.8 9.8 0 1 0 12 2.2zm0 17.8c-1.5 0-3-.4-4.2-1.2l-.3-.2-3.1.8.8-3-.2-.3A8.1 8.1 0 1 1 12 20z"/><path d="M16.5 14.1c-.2-.1-1.5-.7-1.7-.8-.2-.1-.4-.1-.6.1l-.8 1c-.1.2-.3.2-.5.1-.7-.3-1.4-.7-2-1.3-.5-.5-.9-1-1.3-1.6-.1-.2 0-.4.1-.5l.4-.5.3-.5v-.5l-.8-1.9c-.2-.5-.4-.4-.6-.4h-.5c-.2 0-.5.1-.7.3-.8.8-1 1.8-.7 2.8.3 1 .9 1.9 1.6 2.7 1.3 1.6 3 2.7 4.9 3.2.6.2 1.3.2 1.9.1.7-.2 1.4-.7 1.6-1.4.1-.3.1-.7 0-1l-.6-.3z"/></svg>',
-  instagram: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="5"/><circle cx="12" cy="12" r="4"/><circle cx="17.5" cy="6.5" r="1" fill="currentColor" stroke="none"/></svg>',
-  facebook: '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M13.5 22v-8.2h2.8l.4-3.2h-3.2V8.5c0-.9.3-1.6 1.6-1.6h1.7V4.1c-.3 0-1.3-.1-2.5-.1-2.5 0-4.2 1.5-4.2 4.3v2.4H7.3v3.2h2.8V22h3.4z"/></svg>',
-  tiktok: '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M16.6 2h-3.3v13.4a2.9 2.9 0 1 1-2.9-2.9c.3 0 .6 0 .8.1V9.2l-.8-.1a6.2 6.2 0 1 0 6.2 6.2V8.6a8 8 0 0 0 4.7 1.5V6.8a4.7 4.7 0 0 1-4.7-4.8z"/></svg>',
-  compartir: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="m8.6 13.5 6.8 4M15.4 6.5l-6.8 4"/></svg>',
-};
 const ICONO_SET = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="8" width="18" height="13" rx="2"/><path d="M12 8v13M3 12h18M12 8c-1.5-3-5-4-5-1.5S10 8 12 8zm0 0c1.5-3 5-4 5-1.5S14 8 12 8z"/></svg>';
 const ICONO_OFERTA ='<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12V4h8l10 10-8 8L3 12z"/><circle cx="7.5" cy="8.5" r="1"/></svg>';
 
+const FRASE = 'Un universo de belleza por descubrir.';
+/** Enlace de WhatsApp con un mensaje ya escrito (para "Información de compra"). */
+const enlaceWhatsapp = (n, texto) => n.whatsapp ? `https://wa.me/${telWa(n.whatsapp)}?text=${encodeURIComponent(texto)}` : '';
+const categoriasDelCatalogo = () => [...new Set(catalogo.productos.map((p) => p.categoria).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'es'));
+
+/** Pie color vino: nombre, frase, datos, redes con sus logos, enlaces y derechos. */
 function dibujarPie(n) {
-  const red = (clase, nombre, url) => `<a href="${esc(url)}" target="_blank" rel="noopener"><span class="circulo red-${clase}">${ICONOS_REDES[clase]}</span>${nombre}</a>`;
+  const red = (clase, nombre, url) => `<a href="${esc(url)}" target="_blank" rel="noopener"><img src="/img/redes/${clase}.png" alt="">${nombre}</a>`;
   const redes = [
     n.whatsapp && red('whatsapp', 'WhatsApp', 'https://wa.me/' + telWa(n.whatsapp)),
     n.instagram && red('instagram', 'Instagram', n.instagram),
     n.facebook && red('facebook', 'Facebook', n.facebook),
     n.tiktok && red('tiktok', 'TikTok', n.tiktok),
-  ].filter(Boolean).join('');
-  const categorias = catalogo.habilitado ? [...new Set(catalogo.productos.map((p) => p.categoria).filter(Boolean))].sort() : [];
+  ].filter(Boolean);
+  const info = enlaceWhatsapp(n, 'Hola, quiero información de compra.');
   $('#pie').innerHTML = `
-    <img class="logo" src="${n.tieneLogo ? '/api/public/logo' : '/img/logo-vivanta.png'}" alt="${esc(n.nombreNegocio)}">
-    ${n.horarios ? `<p>${esc(n.horarios)}</p>` : ''}
-    ${n.direccion ? `<p>${esc(n.direccion)}</p>` : ''}
-    ${n.telefono ? `<p>Tel. ${esc(n.telefono)}</p>` : ''}
-    ${categorias.length ? `<h2>Categorías</h2><nav class="categorias-pie" aria-label="Categorías">${categorias.map((c) => `<a href="#" data-ir-cat="${esc(c)}">${esc(c)}</a>`).join('')}</nav>` : ''}
-    <h2>Síguenos</h2>
-    <div class="redes">
-      ${redes}
-      <button type="button" id="compartir"><span class="circulo red-compartir">${ICONOS_REDES.compartir}</span>Compartir</button>
-    </div>`;
-  $('#compartir').addEventListener('click', () => {
-    const url = location.origin + '/catalogo/';
-    if (navigator.share) navigator.share({ title: n.nombreNegocio, url }).catch(() => {});
-    else window.open('https://wa.me/?text=' + encodeURIComponent('Mira el catálogo de ' + n.nombreNegocio + ': ' + url), '_blank', 'noopener');
+    <div class="pie-logo">${esc(n.nombreNegocio.replace(/\s+Colecci[oó]n$/i, ''))}</div>
+    <p class="pie-frase">${FRASE}</p>
+    ${n.horarios || n.direccion || n.telefono ? `<p class="pie-datos">${[n.horarios, n.direccion, n.telefono && 'Tel. ' + n.telefono].filter(Boolean).map(esc).join('<br>')}</p>` : ''}
+    <section class="redes-caja" id="contactos" aria-label="Redes sociales">
+      <h2>Síguenos en nuestras redes sociales</h2>
+      <div class="redes" style="--columnas:${redes.length + 1}">
+        ${redes.join('')}
+        <button type="button" id="compartir"><img src="/img/redes/compartir.png" alt="">Compartir</button>
+      </div>
+    </section>
+    <div class="pie-enlaces">
+      ${info ? `<a href="${info}" target="_blank" rel="noopener">Información de compra</a>` : ''}
+      <button type="button" data-ir-contactos>Contactos</button>
+    </div>
+    <div class="derechos">© ${new Date().getFullYear()} ${esc(n.nombreNegocio)}. Todos los derechos reservados.</div>`;
+  $('#compartir').addEventListener('click', async () => {
+    const datos = { title: n.nombreNegocio, text: FRASE, url: location.origin + '/catalogo/' };
+    try {
+      if (navigator.share) await navigator.share(datos);
+      else { await navigator.clipboard.writeText(datos.url); avisar('Enlace del catálogo copiado'); }
+    } catch (e) {
+      if (e.name !== 'AbortError') window.open('https://wa.me/?text=' + encodeURIComponent('Mira el catálogo de ' + n.nombreNegocio + ': ' + datos.url), '_blank', 'noopener');
+    }
   });
-  $$('[data-ir-cat]').forEach((a) => a.addEventListener('click', (e) => {
-    e.preventDefault();
-    categoria = a.dataset.irCat;
-    if (location.hash === '#pedido') location.hash = ''; else pantallaProductos();
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-  }));
+}
+
+/** Menu lateral: categorias, ofertas y sets; despues informacion de compra y contactos. */
+function dibujarMenu(n) {
+  const boton = (dato, texto, clase = '') => `<button type="button" data-ir-cat="${esc(dato)}" class="${clase}">${esc(texto)}</button>`;
+  const info = enlaceWhatsapp(n, 'Hola, quiero información de compra.');
+  $('#menu-contenido').innerHTML = `
+    <nav aria-label="Categorías">
+      ${boton('', 'Todos los productos')}
+      ${catalogo.productos.some((p) => p.precioAntes) ? boton(OFERTAS, 'Ofertas') : ''}
+      ${catalogo.productos.some((p) => p.combo) ? boton(SETS, 'Sets') : ''}
+      ${categoriasDelCatalogo().map((c) => boton(c, c)).join('')}
+    </nav>
+    <div class="menu-separador"></div>
+    <nav aria-label="Información">
+      ${info ? `<a class="especial" href="${info}" target="_blank" rel="noopener">Información de compra</a>` : ''}
+      <button type="button" class="especial" data-ir-contactos>Contactos</button>
+    </nav>`;
+  const abrir = (si) => {
+    $('#menu').classList.toggle('abierto', si);
+    $('#menu-sombra').hidden = !si;
+    $('#abrir-menu').setAttribute('aria-expanded', String(si));
+    if (si) $('#cerrar-menu').focus();
+  };
+  $('#abrir-menu').addEventListener('click', () => abrir(true));
+  $('#cerrar-menu').addEventListener('click', () => abrir(false));
+  $('#menu-sombra').addEventListener('click', () => abrir(false));
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') abrir(false); });
+  // Categorias (menu, tarjetas destacadas y pie) y "Contactos" funcionan igual desde cualquier lugar.
+  document.addEventListener('click', (e) => {
+    const cat = e.target.closest('[data-ir-cat]');
+    const contactos = e.target.closest('[data-ir-contactos]');
+    if (cat) { abrir(false); irACategoria(cat.dataset.irCat); }
+    if (contactos) { abrir(false); $('#contactos').scrollIntoView({ block: 'start' }); }
+  });
+}
+
+/** Filtra por categoria y baja hasta los productos. */
+function irACategoria(cat) {
+  categoria = cat;
+  const bajar = () => $('#productos')?.scrollIntoView({ block: 'start' });
+  if (location.hash === '#pedido') { location.hash = ''; setTimeout(bajar, 80); } else { pantallaProductos(); requestAnimationFrame(bajar); }
 }
 
 // ---------- Pantalla 1: productos ----------
@@ -128,19 +176,47 @@ function pantallaProductos() {
   const categorias = [...new Set(catalogo.productos.map((p) => p.categoria).filter(Boolean))].sort();
   const marcas = [...new Set(catalogo.productos.map((p) => p.marca).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'es'));
   const cuantos = (m) => catalogo.productos.filter((p) => p.marca === m).length;
+  const destacadas = catalogo.categoriasDestacadas || [];
+  const promos = catalogo.promociones || [];
   $('#principal').innerHTML = `
-    <div class="contenedor">
-      <h1 class="titulo-catalogo">Nuestros productos</h1>
-      <div class="filtros">
-        <div class="busqueda">
+    <section class="intro">
+      <p class="frase">${FRASE}</p>
+      <div class="adorno" aria-hidden="true">──── ✦ ────</div>
+      <h1 class="titulo-coleccion">Explora nuestra colección</h1>
+      <p class="subtitulo-coleccion">Encuentra tus favoritos y descubre<br>todo lo que tenemos para ti.</p>
+      <div class="herramientas">
+        <div class="buscador">
+          <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg>
           <label for="buscar" class="oculto">Buscar productos</label>
           <input id="buscar" type="search" placeholder="Buscar productos" value="${esc(busqueda)}">
-          ${marcas.length > 1 ? `<label for="filtro-marca" class="oculto">Marca</label>
-          <select id="filtro-marca" class="${marca ? 'elegida' : ''}">
-            <option value="">Todas las marcas</option>
-            ${marcas.map((m) => `<option value="${esc(m)}" ${m === marca ? 'selected' : ''}>${esc(m)} (${cuantos(m)})</option>`).join('')}
-          </select>` : ''}
         </div>
+        ${marcas.length > 1 ? `<label for="filtro-marca" class="oculto">Marca</label>
+        <select id="filtro-marca" class="${marca ? 'elegida' : ''}">
+          <option value="">Todas las marcas</option>
+          ${marcas.map((m) => `<option value="${esc(m)}" ${m === marca ? 'selected' : ''}>${esc(m)} (${cuantos(m)})</option>`).join('')}
+        </select>` : ''}
+      </div>
+    </section>
+    ${destacadas.length ? `<section class="seccion" aria-label="Categorías más buscadas">
+      <h2 class="titulo-seccion">Nuestras categorías <em>más buscadas</em></h2>
+      <div class="tarjetas-categoria" style="--columnas:${destacadas.length}">
+        ${destacadas.map((c) => `<button type="button" class="tarjeta-categoria" data-ir-cat="${esc(c.nombre)}">
+          <span class="arte">${c.imagenUrl ? `<img src="${esc(c.imagenUrl)}" alt="" loading="lazy">` : '<span aria-hidden="true">✿</span>'}</span>
+          <span class="nombre">${esc(c.nombre)}</span></button>`).join('')}
+      </div></section>` : ''}
+    ${promos.length ? `<section class="carrusel" aria-label="Promociones destacadas">
+      <div class="carrusel-ventana" id="carrusel">
+        ${promos.map((p) => `<article class="promo" ${p.productoId && producto(p.productoId) ? `data-producto="${p.productoId}" tabindex="0"` : ''}>
+          <div class="promo-foto">${p.imagenUrl ? `<img src="${esc(p.imagenUrl)}" alt="" loading="lazy">` : '<span aria-hidden="true">✦</span>'}</div>
+          <div>${p.marca ? `<div class="promo-marca">${esc(p.marca)}</div>` : ''}<h3>${esc(p.titulo)}</h3>${p.texto ? `<p>${esc(p.texto)}</p>` : ''}
+            ${p.productoId && producto(p.productoId) ? '<span class="ver">Ver producto</span>' : ''}</div>
+        </article>`).join('')}
+      </div>
+      ${promos.length > 1 ? `<div class="puntos">${promos.map((_, i) => `<button type="button" data-punto="${i}" aria-label="Promoción ${i + 1}" aria-current="${i === 0}"></button>`).join('')}</div>` : ''}
+    </section>` : ''}
+    <div class="contenedor" id="productos">
+      <h2 class="titulo-seccion">Nuestros <em>productos</em></h2>
+      <div class="filtros">
         <div class="chips" id="chips" role="group" aria-label="Categorías">
           <button type="button" data-cat="" aria-pressed="${!categoria}">Todos</button>
           ${catalogo.productos.some((p) => p.precioAntes) ? `<button type="button" class="chip-oferta" data-cat="${OFERTAS}" aria-pressed="${categoria === OFERTAS}">${ICONO_OFERTA}Ofertas</button>` : ''}
@@ -175,13 +251,42 @@ function pantallaProductos() {
   window.onresize = actualizarVerMas;
   // Un solo manejador para los chips y el aviso de ofertas de la grilla.
   $('#principal').onclick = (e) => {
+    const promo = e.target.closest('[data-producto]');
+    if (promo) { verDetalle(producto(promo.dataset.producto)); return; }
     const b = e.target.closest('[data-cat]');
     if (!b) return;
     categoria = b.dataset.cat;
     $$('.chips [data-cat]').forEach((x) => x.setAttribute('aria-pressed', String(x.dataset.cat === categoria)));
     dibujarGrilla();
   };
+  $('#principal').onkeydown = (e) => {
+    const promo = e.target.closest('[data-producto]');
+    if (promo && e.key === 'Enter') verDetalle(producto(promo.dataset.producto));
+  };
+  activarCarrusel();
   dibujarGrilla();
+}
+
+/** El carrusel pasa solo cada 6 segundos; se puede deslizar con el dedo o tocar los puntos. */
+let temporizadorCarrusel = null;
+function activarCarrusel() {
+  clearInterval(temporizadorCarrusel);
+  const ventana = $('#carrusel');
+  if (!ventana || ventana.children.length < 2) return;
+  const total = ventana.children.length;
+  const actual = () => Math.round(ventana.scrollLeft / ventana.clientWidth);
+  const ir = (i) => ventana.scrollTo({ left: ((i + total) % total) * ventana.clientWidth });
+  ventana.addEventListener('scroll', () => {
+    $$('[data-punto]').forEach((b) => b.setAttribute('aria-current', String(Number(b.dataset.punto) === actual())));
+  }, { passive: true });
+  $$('[data-punto]').forEach((b) => b.addEventListener('click', () => { ir(Number(b.dataset.punto)); reiniciar(); }));
+  const reiniciar = () => {
+    clearInterval(temporizadorCarrusel);
+    if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    temporizadorCarrusel = setInterval(() => { if (document.contains(ventana)) ir(actual() + 1); else clearInterval(temporizadorCarrusel); }, 6000);
+  };
+  ventana.addEventListener('pointerdown', reiniciar);
+  reiniciar();
 }
 
 const OFERTAS = "__ofertas__";
@@ -242,9 +347,12 @@ function actualizarBarra() {
   const unidades = ls.reduce((s, l) => s + l.cantidad, 0);
   $('#barra-pedido').hidden = unidades === 0 || location.hash === '#pedido';
   $('#barra-cuenta').textContent = `Ver pedido · ${unidades} ${unidades === 1 ? 'unidad' : 'unidades'}`;
-  $('#barra-total').textContent = cop(ls.reduce((s, l) => s + l.cantidad * l.p.precio, 0));
-  const domicilio = catalogo.negocio.costoDomicilio;
-  $('#barra-nota').textContent = 'Pedidos por WhatsApp' + (domicilio ? ' · Domicilio ' + cop(domicilio) : '');
+  const total = ls.reduce((s, l) => s + l.cantidad * l.p.precio, 0);
+  $('#barra-total').textContent = cop(total);
+  const { costoDomicilio, envioGratisDesde } = catalogo.negocio;
+  $('#barra-nota').textContent = 'Pedidos por WhatsApp' + (envioGratisDesde > 0 && total >= envioGratisDesde ? ' · Domicilio gratis'
+    : envioGratisDesde > 0 ? ` · Te faltan ${cop(envioGratisDesde - total)} para domicilio gratis`
+      : costoDomicilio ? ' · Domicilio ' + cop(costoDomicilio) : '');
 }
 
 function cambiarCantidad(id, delta) {
@@ -347,7 +455,9 @@ function pantallaPedido() {
   const entrega = datosCliente.entrega || 'RECOGIDA';
   const formaPago = datosCliente.formaPago || 'ANTICIPADO';
   const subtotal = ls.reduce((s, l) => s + l.cantidad * l.p.precio, 0);
-  const domicilio = entrega === 'DOMICILIO' ? n.costoDomicilio : 0;
+  const gratis = n.envioGratisDesde > 0 && subtotal >= n.envioGratisDesde;
+  const faltan = n.envioGratisDesde > 0 && !gratis ? n.envioGratisDesde - subtotal : 0;
+  const domicilio = entrega === 'DOMICILIO' && !gratis ? n.costoDomicilio : 0;
   const opcion = (nombre, valor, texto, elegida) => `<label class="opcion"><input type="radio" name="${nombre}" value="${valor}" ${valor === elegida ? 'checked' : ''}>${texto}</label>`;
   $('#barra-pedido').hidden = true;
   $('#principal').innerHTML = `
@@ -366,8 +476,10 @@ function pantallaPedido() {
       </section>
       <fieldset class="opciones"><legend>¿Cómo lo recibes?</legend>
         ${opcion('entrega', 'RECOGIDA', 'Recoger', entrega)}
-        ${opcion('entrega', 'DOMICILIO', 'Domicilio' + (n.costoDomicilio ? ' (' + cop(n.costoDomicilio) + ')' : ''), entrega)}
+        ${opcion('entrega', 'DOMICILIO', 'Domicilio' + (gratis ? ' (gratis)' : n.costoDomicilio ? ' (' + cop(n.costoDomicilio) + ')' : ''), entrega)}
       </fieldset>
+      ${gratis ? '<p class="nota" style="margin-top:-8px">¡Tu pedido tiene domicilio gratis!</p>'
+        : faltan ? `<p class="nota" style="margin-top:-8px">Te faltan <strong>${cop(faltan)}</strong> para tener domicilio gratis.</p>` : ''}
       <div style="display:flex;flex-direction:column;gap:12px">
         <label>Nombre <input name="nombre" required value="${esc(datosCliente.nombre)}" autocomplete="name"></label>
         <label>Teléfono <input name="telefono" type="tel" required value="${esc(datosCliente.telefono)}" placeholder="Ej. 300 000 0000" autocomplete="tel"></label>
@@ -380,7 +492,8 @@ function pantallaPedido() {
       </fieldset>
       <section class="tarjeta resumen-pedido">
         <div><span class="suave">Subtotal</span><span>${cop(subtotal)}</span></div>
-        ${domicilio ? `<div><span class="suave">Domicilio</span><span>${cop(domicilio)}</span></div>` : ''}
+        ${domicilio ? `<div><span class="suave">Domicilio</span><span>${cop(domicilio)}</span></div>`
+          : entrega === 'DOMICILIO' && gratis ? '<div><span class="suave">Domicilio</span><span>Gratis</span></div>' : ''}
         <div class="total"><span style="font-weight:600">Total</span><span>${cop(subtotal + domicilio)}</span></div>
       </section>
       ${n.whatsapp

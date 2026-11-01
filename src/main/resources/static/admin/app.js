@@ -1552,7 +1552,9 @@ async function configuracion() {
       <section class="tarjeta"><h2>Precios y entregas</h2><div class="campos">
         <label>Incremento sobre el costo (%) <input name="porcentajeIncremento" type="number" min="0" data-numero value="${c.porcentajeIncremento}"></label>
         <label>Costo fijo del domicilio <input name="costoDomicilio" type="number" min="0" data-numero value="${c.costoDomicilio}"></label>
-      </div><p class="suave" style="margin:10px 0 0">100 % = el precio sugerido es el doble del costo. Se redondea al millar más cercano.</p></section>
+        <label>Domicilio gratis en pedidos desde <input name="envioGratisDesde" type="number" min="0" step="1000" data-numero value="${c.envioGratisDesde || ''}" placeholder="Ej. 200000"></label>
+      </div><p class="suave" style="margin:10px 0 0">100 % = el precio sugerido es el doble del costo. Se redondea al millar más cercano.
+        Si pones un valor de domicilio gratis, el catálogo lo anuncia arriba y no cobra el domicilio cuando el pedido llega a ese valor. Déjalo vacío para no usarlo.</p></section>
       <section class="tarjeta"><h2>Catálogo digital</h2>
         <div class="fila">${check('catalogoHabilitado', 'Catálogo habilitado')}${check('mostrarAgotados', 'Mostrar productos agotados con etiqueta «Agotado» (si no, se ocultan)')}</div>
         <div class="fila" style="margin-top:1em;align-items:flex-start;gap:20px">
@@ -1575,7 +1577,11 @@ async function configuracion() {
       <p class="suave">El logo de Vivanta Colección ya viene incluido en la app, el catálogo y los recibos. Sube otro solo si quieres reemplazarlo.</p>
       <img class="logo" src="${c.tieneLogo ? '/api/public/logo?' + Date.now() : '/img/logo-vivanta.png'}" alt="Logo actual" style="max-height:90px;max-width:240px;margin-bottom:1em">
       <form id="form-logo" class="fila"><input type="file" name="archivo" accept="image/*" required style="flex:1"><button>Subir otro logo</button></form>
-    </section>`;
+    </section>
+    <section class="tarjeta" id="config-promos"></section>
+    <section class="tarjeta" id="config-destacadas"></section>`;
+  intentar(promocionesCatalogo);
+  intentar(categoriasDestacadas);
 
   if (window.qrcode) {
     const qr = qrcode(0, 'M');
@@ -1594,6 +1600,7 @@ async function configuracion() {
       const datos = leerFormulario(e.target);
       datos.metaVentasMes = datos.metaVentasMes ?? 0;
       datos.metaUtilidadMes = datos.metaUtilidadMes ?? 0;
+      datos.envioGratisDesde = datos.envioGratisDesde ?? 0;
       negocio = await api('/api/configuracion', { metodo: 'PUT', datos: { ...datos, tieneLogo: c.tieneLogo } });
       avisar('Configuración guardada');
     });
@@ -1607,6 +1614,110 @@ async function configuracion() {
       configuracion();
     });
   });
+}
+
+// ---------- Portada del catalogo (dentro de Configuracion) ----------
+
+const imagenCatalogo = (id) => '/api/public/catalogo-imagenes/' + id;
+
+/** Carrusel de promociones: cada una con foto, marca, titulo, texto y el producto al que lleva. */
+async function promocionesCatalogo() {
+  const [lista, productos] = await Promise.all([api('/api/promociones'), api('/api/productos?soloActivos=true')]);
+  const nombreProducto = (id) => productos.find((p) => p.id === id)?.nombre;
+  $('#config-promos').innerHTML = `
+    <div class="fila" style="justify-content:space-between"><h2 style="margin:0">Carrusel de promociones del catálogo</h2>
+      <button type="button" class="contorno" id="nueva-promo">${icono('mas', 18)}Nueva promoción</button></div>
+    <p class="suave">Aparecen en la portada del catálogo y pasan solas. Usa fotos horizontales o cuadradas con fondo claro.</p>
+    ${lista.length ? `<div class="tabla-contenedor"><table>
+      <thead><tr><th>Foto</th><th>Promoción</th><th>Lleva a</th><th class="num">Orden</th><th>Estado</th><th></th></tr></thead>
+      <tbody>${lista.map((p) => `<tr>
+        <td>${p.imagenId ? `<img class="miniatura" src="${imagenCatalogo(p.imagenId)}" alt="">` : '<span class="suave">Sin foto</span>'}</td>
+        <td><strong>${esc(p.titulo)}</strong>${p.marca ? `<br><span class="suave">${esc(p.marca)}</span>` : ''}</td>
+        <td>${p.productoId ? esc(nombreProducto(p.productoId) || 'Producto desactivado') : '<span class="suave">—</span>'}</td>
+        <td class="num">${p.orden}</td>
+        <td>${p.activa ? '<span class="etiqueta ok">Visible</span>' : '<span class="etiqueta neutra">Oculta</span>'}</td>
+        <td><div class="fila" style="gap:6px;flex-wrap:nowrap"><button type="button" class="pequeno" data-editar-promo="${p.id}">Editar</button><button type="button" class="pequeno peligro" data-borrar-promo="${p.id}">Eliminar</button></div></td>
+      </tr>`).join('')}</tbody></table></div>`
+      : '<p class="vacio">Aún no hay promociones. Mientras no haya, el catálogo no muestra el carrusel.</p>'}`;
+  $('#nueva-promo').addEventListener('click', () => formularioPromocion(null, productos, lista.length + 1));
+  $$('[data-editar-promo]').forEach((b) => b.addEventListener('click', () =>
+    formularioPromocion(lista.find((p) => p.id === Number(b.dataset.editarPromo)), productos)));
+  $$('[data-borrar-promo]').forEach((b) => b.addEventListener('click', () => {
+    if (!confirm('¿Eliminar esta promoción del carrusel?')) return;
+    intentar(async () => {
+      await api('/api/promociones/' + b.dataset.borrarPromo, { metodo: 'DELETE' });
+      avisar('Promoción eliminada');
+      promocionesCatalogo();
+    });
+  }));
+}
+
+function formularioPromocion(p, productos, orden = 1) {
+  const m = abrirModal(p ? 'Editar promoción' : 'Nueva promoción', `
+    <form id="form-promo" class="campos">
+      <label>Marca (texto pequeño) <input name="marca" value="${esc(p?.marca)}" placeholder="Ej. Natura"></label>
+      <label>Título * <input name="titulo" required value="${esc(p?.titulo)}" placeholder="Ej. Frescor Maracuyá"></label>
+      <label class="ancho">Texto <textarea name="texto" rows="3" placeholder="Una fragancia ligera y refrescante…">${esc(p?.texto)}</textarea></label>
+      <label>Al tocarla abre <select name="productoId" data-numero><option value="">Nada (solo informativa)</option>
+        ${productos.map((x) => `<option value="${x.id}" ${x.id === p?.productoId ? 'selected' : ''}>${esc(x.nombre)}</option>`).join('')}</select></label>
+      <label>Orden <input name="orden" type="number" min="0" step="1" data-numero value="${p?.orden ?? orden}"></label>
+      <label class="check ancho"><input type="checkbox" name="activa" ${p?.activa === false ? '' : 'checked'}> Visible en el catálogo</label>
+      <label class="ancho">Foto ${p?.imagenId ? '(ya tiene una; elige otra para reemplazarla)' : ''}<input type="file" id="foto-promo" accept="image/*"></label>
+      ${p?.imagenId ? `<img src="${imagenCatalogo(p.imagenId)}" alt="" class="ancho" style="max-height:160px;object-fit:contain;justify-self:start;border-radius:12px">` : ''}
+    </form>
+    <div class="modal-pie"><button data-cerrar>Cancelar</button><button class="primario" form="form-promo">Guardar</button></div>`);
+  $('#form-promo', m).addEventListener('submit', (e) => {
+    e.preventDefault();
+    intentar(async () => {
+      const datos = leerFormulario(e.target);
+      datos.orden = datos.orden ?? 0;
+      const guardada = await api(p ? '/api/promociones/' + p.id : '/api/promociones', { metodo: p ? 'PUT' : 'POST', datos });
+      const foto = $('#foto-promo', m).files;
+      if (foto.length) {
+        await api(`/api/promociones/${guardada.id}/imagen`, { metodo: 'POST', formulario: await formularioFotos(foto, 'archivo') });
+      }
+      cerrarModal();
+      avisar('Promoción guardada');
+      promocionesCatalogo();
+    });
+  });
+}
+
+/** "Nuestras categorias mas buscadas": hasta 3 categorias, cada una con su foto. */
+async function categoriasDestacadas() {
+  const cats = await api('/api/categorias');
+  const destacadas = cats.filter((c) => c.destacada).length;
+  $('#config-destacadas').innerHTML = `
+    <h2>Categorías más buscadas</h2>
+    <p class="suave">Elige hasta 3 (van ${destacadas}). Si una no tiene foto propia, el catálogo usa la foto de uno de sus productos.</p>
+    ${cats.length ? `<div class="tabla-contenedor"><table>
+      <thead><tr><th>Categoría</th><th>Destacada</th><th>Foto</th><th></th></tr></thead>
+      <tbody>${cats.map((c) => `<tr>
+        <td><strong>${esc(c.nombre)}</strong></td>
+        <td><label class="check"><input type="checkbox" data-destacar="${c.id}" ${c.destacada ? 'checked' : ''} ${!c.destacada && destacadas >= 3 ? 'disabled' : ''}> Mostrar</label></td>
+        <td>${c.imagenId ? `<img class="miniatura" src="${imagenCatalogo(c.imagenId)}" alt="">` : '<span class="suave">La de un producto</span>'}</td>
+        <td><div class="fila" style="gap:6px;flex-wrap:nowrap">
+          <label class="boton pequeno" style="cursor:pointer">${c.imagenId ? 'Cambiar foto' : 'Subir foto'}<input type="file" accept="image/*" data-foto-cat="${c.id}" hidden></label>
+          ${c.imagenId ? `<button type="button" class="pequeno" data-quitar-foto-cat="${c.id}">Quitar foto</button>` : ''}</div></td>
+      </tr>`).join('')}</tbody></table></div>`
+      : '<p class="vacio">Aún no tienes categorías. Créalas en Inventario → Categorías.</p>'}`;
+  $$('[data-destacar]').forEach((ch) => ch.addEventListener('change', () => intentar(async () => {
+    try {
+      await api(`/api/categorias/${ch.dataset.destacar}/destacada`, { metodo: 'PUT', datos: { destacada: ch.checked } });
+    } finally {
+      categoriasDestacadas();
+    }
+  })));
+  $$('[data-foto-cat]').forEach((input) => input.addEventListener('change', () => intentar(async () => {
+    if (!input.files.length) return;
+    await api(`/api/categorias/${input.dataset.fotoCat}/imagen`, { metodo: 'POST', formulario: await formularioFotos(input.files, 'archivo') });
+    avisar('Foto de la categoría guardada');
+    categoriasDestacadas();
+  })));
+  $$('[data-quitar-foto-cat]').forEach((b) => b.addEventListener('click', () => intentar(async () => {
+    await api(`/api/categorias/${b.dataset.quitarFotoCat}/imagen`, { metodo: 'DELETE' });
+    categoriasDestacadas();
+  })));
 }
 
 // ---------- Inicio ----------

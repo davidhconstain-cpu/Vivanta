@@ -33,6 +33,10 @@ public class Configuracion {
 
     private long costoDomicilio;
 
+    /** El domicilio sale gratis cuando el pedido llega a este valor (0 = nunca). */
+    @Column(nullable = false, columnDefinition = "bigint default 0")
+    private long envioGratisDesde;
+
     /** Metas mensuales que muestra el panel (0 = sin meta). */
     @Column(nullable = false, columnDefinition = "bigint default 0")
     private long metaVentasMes;
@@ -83,6 +87,13 @@ public class Configuracion {
     public long getMetaUtilidadMes() { return metaUtilidadMes; }
     public void setMetaUtilidadMes(long v) { this.metaUtilidadMes = v; }
     public void setCostoDomicilio(long v) { this.costoDomicilio = v; }
+    public long getEnvioGratisDesde() { return envioGratisDesde; }
+    public void setEnvioGratisDesde(long v) { this.envioGratisDesde = v; }
+
+    /** Valor del domicilio para un pedido con este subtotal. */
+    public long domicilioPara(long subtotal) {
+        return envioGratisDesde > 0 && subtotal >= envioGratisDesde ? 0 : costoDomicilio;
+    }
     public boolean isCatalogoHabilitado() { return catalogoHabilitado; }
     public void setCatalogoHabilitado(boolean v) { this.catalogoHabilitado = v; }
     public boolean isMostrarAgotados() { return mostrarAgotados; }

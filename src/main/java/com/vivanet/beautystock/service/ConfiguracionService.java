@@ -52,6 +52,7 @@ public class ConfiguracionService {
         c.setCostoDomicilio(datos.costoDomicilio());
         c.setMetaVentasMes(datos.metaVentasMes());
         c.setMetaUtilidadMes(datos.metaUtilidadMes());
+        c.setEnvioGratisDesde(datos.envioGratisDesde());
         c.setCatalogoHabilitado(datos.catalogoHabilitado());
         c.setMostrarAgotados(datos.mostrarAgotados());
         c.setNotasRecibo(datos.notasRecibo());
@@ -74,7 +75,7 @@ public class ConfiguracionService {
         Configuracion c = obtener();
         return new NegocioPublicoDto(c.getNombreNegocio(), c.getTelefono(), c.getWhatsapp(), c.getDireccion(),
                 c.getCorreo(), c.getHorarios(), c.getInstagram(), c.getFacebook(), c.getTiktok(),
-                c.getCostoDomicilio(), c.getLogoContentType() != null);
+                c.getCostoDomicilio(), c.getLogoContentType() != null, c.getEnvioGratisDesde());
     }
 
     private ConfiguracionDto aDto(Configuracion c) {
@@ -83,7 +84,7 @@ public class ConfiguracionService {
                 c.getPorcentajeIncremento(), c.getCostoDomicilio(), c.isCatalogoHabilitado(),
                 c.isMostrarAgotados(), c.getNotasRecibo(), c.isReciboMostrarLogo(), c.isReciboMostrarDireccion(),
                 c.isReciboMostrarTelefono(), c.isReciboMostrarCliente(), c.getLogoContentType() != null,
-                c.getMetaVentasMes(), c.getMetaUtilidadMes());
+                c.getMetaVentasMes(), c.getMetaUtilidadMes(), c.getEnvioGratisDesde());
     }
 
     /** Deja solo los digitos y agrega el indicativo de Colombia (57) si hace falta. */

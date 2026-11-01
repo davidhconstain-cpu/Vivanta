@@ -3,27 +3,104 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#C65360">
   <title>Catálogo · Vivanta Colección</title>
   <meta name="description" content="Catálogo de productos de belleza de Vivanta Colección. Haz tu pedido por WhatsApp.">
   <link rel="icon" type="image/png" href="/img/favicon.png">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@600;700&family=Jost:wght@400;500;600&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Playfair+Display:ital,wght@0,500;0,600;0,700;1,500&family=Great+Vibes&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/css/estilos.css">
   <style>
-    :root { --tinte-3: #D6D4AD; --oferta: #A83D8A; --sobre-oferta: #fff; --borde-chip: #D9CFC6; }
-    :root[data-theme="dark"] { --tinte-3: #3A3826; --oferta: #D97BC0; --sobre-oferta: #24181B; --borde-chip: #5A484E; }
+    /* Paleta y letras del diseno del catalogo (DM Sans, Playfair Display y Great Vibes). */
+    :root {
+      --tinte-3: #D6D4AD; --oferta: #A83D8A; --sobre-oferta: #fff; --borde-chip: #E7C9C6;
+      --fondo: #FFF9F1; --texto: #2F2024; --texto-suave: #806C70; --borde: #E7C9C6; --linea: #F1DEDB;
+      --rosa: #F3D8D8; --vino: #4A1726; --vino-pie: #713B49;
+      --fuente: "DM Sans", Arial, sans-serif; --fuente-marca: "Playfair Display", Georgia, serif; --fuente-script: "Great Vibes", cursive;
+    }
+    body { padding-bottom: 110px; background: var(--fondo); }
+    .oculto { position: absolute; left: -9999px; }
 
-    body { padding-bottom: 110px; }
-    /* Encabezado: el banner con el logo; el contenido sube encima con esquinas redondeadas. */
-    .cabeza { background: #C65360; height: 196px; overflow: hidden; }
-    .cabeza a { display: block; height: 100%; }
-    .cabeza img { width: 100%; height: 100%; object-fit: contain; display: block; }
-    .cabeza.compacta { height: 130px; }
-    .hoja { position: relative; margin-top: -22px; background: var(--fondo); border-radius: 24px 24px 0 0; }
-    .contenedor { max-width: 1100px; margin: 0 auto; padding: 22px 16px 0; }
-    .titulo-catalogo { margin: 0 0 14px; font-family: var(--fuente-marca); font-size: 34px; font-weight: 700; line-height: 1.1; }
+    /* Franja de envio gratis */
+    .anuncio { min-height: 38px; display: flex; align-items: center; justify-content: center; gap: 10px; padding: 4px 10px; font-size: 12px; letter-spacing: .02em; color: #5A2933; text-align: center; }
+    .anuncio .destello { color: var(--marca); font-size: 17px; }
+    .anuncio strong { background: var(--marca); color: #fff; padding: 5px 10px; border-radius: 20px; font-weight: 600; white-space: nowrap; }
 
+    /* Encabezado rosado con curva y menu lateral */
+    .cabeza { background: #C65360; color: #fff; position: relative; }
+    .cabeza::after { content: ""; position: absolute; left: -5%; right: -5%; height: 28px; bottom: -17px; background: var(--fondo); border-radius: 50% 50% 0 0 / 75% 75% 0 0; z-index: 3; pointer-events: none; }
+    .cabeza-fila { height: 130px; max-width: 1100px; margin: auto; padding: 12px 22px; display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; position: relative; z-index: 2; }
+    .cabeza.compacta .cabeza-fila { height: 104px; }
+    .cabeza.compacta .logo-cabeza { width: min(170px, 45vw); }
+    .hamburguesa { justify-self: start; width: 44px; height: 44px; min-height: 0; padding: 0; border: 0; background: none; display: flex; flex-direction: column; justify-content: center; gap: 6px; cursor: pointer; }
+    .hamburguesa i { display: block; width: 29px; height: 2px; border-radius: 3px; background: #fff; }
+    .logo-cabeza { display: block; width: min(220px, 52vw); max-height: 118px; height: auto; object-fit: contain; }
+    .menu-sombra { position: fixed; inset: 0; background: #21151b80; z-index: 39; }
+    .menu-lateral { position: fixed; inset: 0 auto 0 0; width: min(82vw, 390px); background: #fffdfb; z-index: 40; transform: translateX(-105%); transition: transform .3s ease; box-shadow: 12px 0 35px #32161d25; overflow-y: auto; visibility: hidden; }
+    .menu-lateral.abierto { transform: translateX(0); visibility: visible; }
+    .menu-cabeza { background: #C65360; min-height: 132px; padding: 22px 18px; display: flex; align-items: center; justify-content: center; position: relative; }
+    .menu-cabeza img { width: 210px; max-width: 75%; height: auto; }
+    .menu-cerrar { position: absolute; right: 10px; top: 8px; width: 44px; height: 44px; min-height: 0; padding: 0; border: 0; background: none; box-shadow: none; border-radius: 0; color: #fff; font-size: 30px; line-height: 1; cursor: pointer; }
+    .menu-contenido { padding: 14px 24px 35px; }
+    .menu-contenido nav { display: grid; }
+    .menu-contenido nav a, .menu-contenido nav button { display: flex; align-items: center; justify-content: space-between; width: 100%; min-height: 53px; padding: 0; border: 0; border-bottom: 1px solid #f6ecea; border-radius: 0; box-shadow: none; background: none; color: var(--texto); font: inherit; font-size: 16px; text-align: left; text-decoration: none; cursor: pointer; }
+    .menu-contenido nav a::after, .menu-contenido nav button::after { content: "›"; font-size: 27px; font-weight: 300; }
+    .menu-contenido .especial { color: var(--marca); font-weight: 700; }
+    .menu-separador { height: 1px; background: var(--borde); margin: 14px 0; }
+
+    /* Portada: frase, titulo y buscador */
+    .intro { position: relative; text-align: center; padding: 26px 20px 12px; background: radial-gradient(ellipse at 50% 0%, #fff 0%, var(--fondo) 68%); overflow: hidden; }
+    .intro::before, .intro::after { content: "❧"; position: absolute; top: 18px; color: #E9BFC1; opacity: .25; font-size: 95px; }
+    .intro::before { left: -22px; transform: rotate(-35deg); }
+    .intro::after { right: -22px; transform: scaleX(-1) rotate(-35deg); }
+    .frase { position: relative; z-index: 1; margin: 0 auto 7px; font: clamp(25px, 5vw, 39px)/1.3 var(--fuente-script); color: #321c23; }
+    .adorno { margin: 0 0 12px; color: var(--marca); font-size: 22px; letter-spacing: 8px; }
+    .titulo-coleccion { margin: 0 0 8px; font: italic 500 clamp(34px, 7vw, 54px)/1.1 var(--fuente-marca); color: var(--vino); }
+    .subtitulo-coleccion { max-width: 540px; margin: 0 auto 22px; font-size: 12px; line-height: 1.8; letter-spacing: .19em; text-transform: uppercase; color: #512b34; }
+    .herramientas { max-width: 760px; margin: 0 auto; display: grid; gap: 12px; }
+    .buscador { position: relative; }
+    .buscador svg { position: absolute; left: 20px; top: 50%; transform: translateY(-50%); width: 22px; height: 22px; stroke: var(--vino); }
+    .herramientas input, .herramientas select { width: 100%; height: 54px; border: 1px solid #C98D96; border-radius: 30px; background: #fff9f5; color: #40262d; font: inherit; font-size: 16px; }
+    .herramientas input { padding: 0 20px 0 56px; }
+    .herramientas select { padding: 0 44px 0 22px; appearance: none; background-image: linear-gradient(45deg, transparent 50%, var(--vino) 50%), linear-gradient(135deg, var(--vino) 50%, transparent 50%); background-position: calc(100% - 23px) 24px, calc(100% - 17px) 24px; background-size: 6px 6px; background-repeat: no-repeat; }
+    .herramientas select.elegida { border: 1.5px solid var(--principal); color: var(--principal); font-weight: 600; }
+
+    /* Categorias mas buscadas */
+    .seccion { max-width: 1100px; margin: auto; padding: 26px 18px 18px; }
+    .titulo-seccion { margin: 0 0 20px; text-align: center; font: italic 500 clamp(22px, 4.5vw, 34px) var(--fuente-marca); color: #411d28; }
+    .titulo-seccion em { color: var(--marca); }
+    .tarjetas-categoria { display: grid; grid-template-columns: repeat(var(--columnas, 3), minmax(0, 1fr)); gap: 11px; max-width: min(900px, calc(var(--columnas, 3) * 300px)); margin: auto; }
+    .tarjeta-categoria { min-width: 0; padding: 0; border: 1px solid #efc5c6; border-radius: 22px; overflow: hidden; background: var(--rosa); cursor: pointer; font: inherit; color: inherit; display: flex; flex-direction: column; }
+    .tarjeta-categoria .arte, .tarjeta-categoria .nombre { width: 100%; }
+    .tarjeta-categoria .arte { height: 126px; display: flex; align-items: center; justify-content: center; background: linear-gradient(145deg, #f4c9cb, #fcece7); }
+    .tarjeta-categoria .arte img { width: 100%; height: 100%; object-fit: cover; }
+    .tarjeta-categoria .arte span { font-size: 60px; color: #7a3743; }
+    .tarjeta-categoria .nombre { min-height: 65px; padding: 10px 7px; display: flex; align-items: center; justify-content: center; text-align: center; font: 500 14px/1.25 var(--fuente); color: #3b2028; background: #f9e8e5; }
+
+    /* Carrusel de promociones */
+    .carrusel { max-width: 1100px; margin: auto; padding: 18px 18px 30px; }
+    .carrusel-ventana { display: flex; overflow-x: auto; scroll-snap-type: x mandatory; scroll-behavior: smooth; border-radius: 24px; scrollbar-width: none; }
+    .carrusel-ventana::-webkit-scrollbar { display: none; }
+    .promo { flex: 0 0 100%; min-height: 245px; padding: 24px 23px; display: grid; grid-template-columns: 1fr 1fr; align-items: center; gap: 12px; scroll-snap-align: start; border: 0; text-align: center; font: inherit; color: inherit; }
+    .promo:nth-child(3n+1) { background: linear-gradient(115deg, #f5d99e, #fff0d5 55%, #f2d2cb); }
+    .promo:nth-child(3n+2) { background: linear-gradient(115deg, #f7e4c8, #fff7e9 55%, #e7d8cb); }
+    .promo:nth-child(3n) { background: linear-gradient(115deg, #e9c8d5, #fff0f1 55%, #d9b4c4); }
+    .promo[data-producto] { cursor: pointer; }
+    .promo-foto { display: flex; align-items: center; justify-content: center; min-height: 0; }
+    .promo-foto img { max-width: 100%; max-height: 220px; object-fit: contain; filter: drop-shadow(0 12px 8px #4b202222); }
+    .promo-foto span { font-size: clamp(70px, 15vw, 130px); color: #8c3e61; }
+    .promo-marca { font-size: 11px; font-weight: 700; letter-spacing: .16em; text-transform: uppercase; color: #70404a; }
+    .promo h3 { margin: 7px 0; font: italic 500 clamp(25px, 4vw, 38px)/1.05 var(--fuente-marca); color: #4a202a; }
+    .promo p { margin: 0; font-size: 13px; line-height: 1.45; color: #3f3031; }
+    .promo .ver { display: inline-block; margin-top: 12px; font-size: 13px; font-weight: 600; color: var(--principal); text-decoration: underline; text-underline-offset: 3px; }
+    .puntos { display: flex; justify-content: center; gap: 4px; padding-top: 8px; }
+    .puntos button { width: 28px; height: 28px; min-height: 0; padding: 0; border: 0; background: none; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+    .puntos button::before { content: ""; width: 9px; height: 9px; border-radius: 50%; background: #e4b8bb; }
+    .puntos button[aria-current="true"]::before { background: var(--marca); }
+
+    /* Productos */
+    .contenedor { max-width: 1100px; margin: 0 auto; padding: 10px 16px 0; }
     .filtros { display: flex; flex-direction: column; gap: 14px; margin-bottom: 16px; }
     .oculto { position: absolute; left: -9999px; }
     /* Buscador y marca en una linea; en el celular, uno debajo del otro. */
@@ -107,25 +184,21 @@
     .nota { margin: 0; font-size: 13px; line-height: 1.45; color: var(--texto-suave); text-align: center; }
     .pedido .opciones .opcion { flex: 1 1 0; }
 
-    footer { margin-top: 40px; padding: 28px 16px 32px; background: var(--superficie); border-top: 1px solid var(--borde); text-align: center; color: var(--texto-suave); display: flex; flex-direction: column; align-items: center; gap: 6px; }
-    footer .logo { width: 140px; margin-bottom: 6px; }
-    footer p { margin: 0; }
-    footer h2 { margin: 16px 0 6px; font-size: 22px; color: var(--texto); }
-    /* Redes sociales: circulo con el logo de cada red y su nombre debajo. */
-    .redes { display: flex; gap: 18px; justify-content: center; flex-wrap: wrap; }
-    .redes a, .redes button { display: flex; flex-direction: column; align-items: center; gap: 6px; min-height: 0; padding: 0; border: 0; background: none; color: var(--texto); text-decoration: none; font: inherit; font-size: 12px; font-weight: 500; cursor: pointer; }
-    .redes .circulo { width: 52px; height: 52px; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: #fff; box-shadow: 0 2px 8px rgba(58, 42, 46, .15); transition: transform .15s; }
-    .redes a:hover .circulo, .redes button:hover .circulo { transform: translateY(-2px); }
-    .redes svg { width: 26px; height: 26px; }
-    .red-whatsapp { background: #25D366; }
-    .red-instagram { background: radial-gradient(circle at 30% 107%, #FDF497 0%, #FD5949 45%, #D6249F 60%, #285AEB 90%); }
-    .red-facebook { background: #1877F2; }
-    .red-tiktok { background: #111; }
-    .red-compartir { background: var(--principal); }
-    .red-compartir svg { stroke: var(--sobre-principal); }
-    .categorias-pie { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; max-width: 560px; }
-    .categorias-pie a { padding: 6px 14px; border-radius: 999px; border: 1px solid var(--borde-chip); color: var(--texto); text-decoration: none; font-size: 14px; }
-    .categorias-pie a:hover { border-color: var(--principal); color: var(--principal); }
+    /* Pie color vino con las redes en una caja blanca */
+    footer { margin-top: 40px; padding: 34px 22px 20px; background: var(--vino-pie); color: #fff; text-align: center; }
+    .pie-logo { font: 500 40px var(--fuente-marca); }
+    .pie-frase { margin: 4px 0 0; color: #f1dadd; font: italic 17px var(--fuente-marca); }
+    .pie-datos { margin: 14px 0 0; font-size: 13px; line-height: 1.7; color: #f1dadd; }
+    .redes-caja { max-width: 900px; margin: 22px auto 0; padding: 32px 14px 36px; background: #fffdfb; color: #382a30; }
+    .redes-caja h2 { margin: 0 0 22px; font: 500 clamp(26px, 5vw, 40px) var(--fuente-marca); color: #382a30; }
+    .redes { display: grid; grid-template-columns: repeat(var(--columnas, 5), minmax(0, 1fr)); gap: 8px; max-width: 640px; margin: auto; }
+    .redes a, .redes button { min-width: 0; min-height: 0; padding: 0; border: 0; background: none; display: flex; flex-direction: column; align-items: center; gap: 7px; color: #382a30; text-decoration: none; font: inherit; font-size: clamp(10px, 1.7vw, 14px); font-weight: 600; cursor: pointer; }
+    .redes img { width: clamp(42px, 8vw, 64px); height: clamp(42px, 8vw, 64px); object-fit: contain; transition: transform .15s; }
+    .redes a:hover img, .redes button:hover img { transform: translateY(-2px); }
+    .pie-enlaces { display: flex; justify-content: center; flex-wrap: wrap; gap: 12px 22px; margin: 22px auto; }
+    .pie-enlaces a, .pie-enlaces button { min-height: 0; padding: 0; border: 0; background: none; color: #fff0f0; font: inherit; font-size: 13px; text-decoration: none; cursor: pointer; }
+    .pie-enlaces a:hover, .pie-enlaces button:hover { text-decoration: underline; }
+    .derechos { font-size: 11px; color: #e4c5ca; }
 
     .mantenimiento { max-width: 520px; margin: 0 auto; text-align: center; display: flex; flex-direction: column; gap: 12px; align-items: center; }
     /* Detalle del producto: foto a la izquierda, datos y lo que incluye el set a la derecha. */
@@ -171,15 +244,44 @@
     @media (max-width: 520px) {
       .grilla { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     }
-    @media (min-width: 900px) { .cabeza { height: 240px; } .titulo-catalogo { font-size: 40px; } }
+    @media (min-width: 700px) {
+      .cabeza-fila { height: 145px; }
+      .tarjeta-categoria .arte { height: 170px; }
+      .tarjeta-categoria .nombre { font-size: 17px; }
+      .promo { min-height: 300px; }
+      .promo p { font-size: 16px; }
+    }
+    @media (max-width: 380px) {
+      .cabeza-fila { height: 112px; padding: 10px 16px; }
+      .logo-cabeza { width: 180px; }
+      .tarjetas-categoria { gap: 7px; }
+      .tarjeta-categoria .arte { height: 100px; }
+      .tarjeta-categoria .nombre { font-size: 12px; min-height: 60px; }
+      .promo { padding: 17px 12px; }
+      .promo p { font-size: 11px; }
+    }
+    @media (prefers-reduced-motion: reduce) { .menu-lateral { transition: none; } .carrusel-ventana { scroll-behavior: auto; } }
   </style>
 </head>
 <body>
-  <header class="cabeza" id="cabeza"><a href="#" id="inicio"><img id="banner" src="/img/banner-vivanta.jpg" alt="Vivanta Colección" width="1063" height="591"></a></header>
-  <div class="hoja">
-    <main id="principal"><p class="suave contenedor">Cargando catálogo…</p></main>
-    <footer id="pie"></footer>
-  </div>
+  <div class="anuncio" id="anuncio" hidden></div>
+  <header class="cabeza" id="cabeza">
+    <div class="cabeza-fila">
+      <button type="button" class="hamburguesa" id="abrir-menu" aria-label="Abrir menú" aria-expanded="false" aria-controls="menu"><i></i><i></i><i></i></button>
+      <a href="#" id="inicio" aria-label="Inicio del catálogo"><img class="logo-cabeza" id="banner" src="/img/banner-vivanta.jpg" alt="Vivanta Colección" width="1063" height="591"></a>
+      <span></span>
+    </div>
+  </header>
+  <div class="menu-sombra" id="menu-sombra" hidden></div>
+  <aside class="menu-lateral" id="menu" aria-label="Menú de navegación">
+    <div class="menu-cabeza">
+      <img id="menu-logo" src="/img/banner-vivanta.jpg" alt="Vivanta Colección">
+      <button type="button" class="menu-cerrar" id="cerrar-menu" aria-label="Cerrar menú">×</button>
+    </div>
+    <div class="menu-contenido" id="menu-contenido"></div>
+  </aside>
+  <main id="principal"><p class="suave contenedor">Cargando catálogo…</p></main>
+  <footer id="pie"></footer>
   <div class="barra-pedido" id="barra-pedido" hidden>
     <a href="#pedido"><span id="barra-cuenta">Ver pedido</span><span id="barra-total">$0</span></a>
     <p id="barra-nota"></p>

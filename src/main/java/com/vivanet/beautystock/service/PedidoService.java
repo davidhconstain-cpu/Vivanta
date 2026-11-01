@@ -121,7 +121,7 @@ public class PedidoService {
                         : "Solo quedan " + disponibles + " unidades de " + n.getKey().getNombre() + ".");
             }
         }
-        long domicilio = datos.tipoEntrega() == TipoEntrega.DOMICILIO ? config.getCostoDomicilio() : 0;
+        long domicilio = datos.tipoEntrega() == TipoEntrega.DOMICILIO ? config.domicilioPara(subtotal) : 0;
         pedido.setSubtotal(subtotal);
         pedido.setCostoDomicilio(domicilio);
         pedido.setTotal(subtotal + domicilio);
@@ -196,6 +196,8 @@ public class PedidoService {
         }
         if (p.getCostoDomicilio() > 0) {
             m.append("• Domicilio — ").append(Pesos.formato(p.getCostoDomicilio())).append("\n");
+        } else if (p.getTipoEntrega() == TipoEntrega.DOMICILIO) {
+            m.append("• Domicilio — gratis\n");
         }
         m.append("\nTotal: ").append(Pesos.formato(p.getTotal())).append("\n");
         m.append("Nombre: ").append(p.getNombreCliente()).append("\n");

@@ -38,8 +38,12 @@ public class PanelService {
     private final ProductoService productos;
     private final ConfiguracionService configuracion;
 
+    private final ContenidoCatalogoService contenido;
+
     public PanelService(VentaRepository ventas, CompraRepository compras, PedidoRepository pedidos,
-            InventarioService inventario, ProductoService productos, ConfiguracionService configuracion) {
+            InventarioService inventario, ProductoService productos, ConfiguracionService configuracion,
+            ContenidoCatalogoService contenido) {
+        this.contenido = contenido;
         this.ventas = ventas;
         this.compras = compras;
         this.pedidos = pedidos;
@@ -127,7 +131,7 @@ public class PanelService {
     public CatalogoDto catalogo() {
         Configuracion config = configuracion.obtener();
         if (!config.isCatalogoHabilitado()) {
-            return new CatalogoDto(false, configuracion.negocioPublico(), List.of());
+            return new CatalogoDto(false, configuracion.negocioPublico(), List.of(), List.of(), List.of());
         }
         Map<Long, List<Long>> imagenes = productos.imagenesPorProducto();
         List<ProductoCatalogoDto> lista = productos.listar(null, null, true).stream()
@@ -145,7 +149,8 @@ public class PanelService {
                                         imagenes.getOrDefault(c.productoId(), List.of()).stream().findFirst().orElse(null)))
                                 .toList()))
                 .toList();
-        return new CatalogoDto(true, configuracion.negocioPublico(), lista);
+        return new CatalogoDto(true, configuracion.negocioPublico(), lista, contenido.promocionesPublicas(),
+                contenido.categoriasDestacadas(lista));
     }
 
     /** Aviso tres dias antes del vencimiento y cuando ya esta vencido. */
