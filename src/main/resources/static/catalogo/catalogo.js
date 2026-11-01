@@ -15,6 +15,7 @@ const foto = (p) => p.imagenes.length ? `/api/public/imagenes/${p.imagenes[0]}` 
 let catalogo = null;
 let categoria = '';
 let busqueda = '';
+let marca = '';
 let carrito = cargar('vivanta-carrito', {});        // { productoId: cantidad }
 let datosCliente = cargar('vivanta-cliente', {});   // nombre, telefono, direccion, entrega, formaPago...
 
@@ -125,22 +126,53 @@ function dibujarPie(n) {
 
 function pantallaProductos() {
   const categorias = [...new Set(catalogo.productos.map((p) => p.categoria).filter(Boolean))].sort();
+  const marcas = [...new Set(catalogo.productos.map((p) => p.marca).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'es'));
+  const cuantos = (m) => catalogo.productos.filter((p) => p.marca === m).length;
   $('#principal').innerHTML = `
     <div class="contenedor">
       <h1 class="titulo-catalogo">Nuestros productos</h1>
       <div class="filtros">
-        <label for="buscar" style="position:absolute;left:-9999px">Buscar productos</label>
-        <input id="buscar" type="search" placeholder="Buscar productos" value="${esc(busqueda)}">
-        <div class="chips" role="group" aria-label="Categorías">
+        <div class="busqueda">
+          <label for="buscar" class="oculto">Buscar productos</label>
+          <input id="buscar" type="search" placeholder="Buscar productos" value="${esc(busqueda)}">
+          ${marcas.length > 1 ? `<label for="filtro-marca" class="oculto">Marca</label>
+          <select id="filtro-marca" class="${marca ? 'elegida' : ''}">
+            <option value="">Todas las marcas</option>
+            ${marcas.map((m) => `<option value="${esc(m)}" ${m === marca ? 'selected' : ''}>${esc(m)} (${cuantos(m)})</option>`).join('')}
+          </select>` : ''}
+        </div>
+        <div class="chips" id="chips" role="group" aria-label="Categorías">
           <button type="button" data-cat="" aria-pressed="${!categoria}">Todos</button>
           ${catalogo.productos.some((p) => p.precioAntes) ? `<button type="button" class="chip-oferta" data-cat="${OFERTAS}" aria-pressed="${categoria === OFERTAS}">${ICONO_OFERTA}Ofertas</button>` : ''}
           ${catalogo.productos.some((p) => p.combo) ? `<button type="button" class="chip-set" data-cat="${SETS}" aria-pressed="${categoria === SETS}">${ICONO_SET}Sets</button>` : ''}
           ${categorias.map((c) => `<button type="button" data-cat="${esc(c)}" aria-pressed="${c === categoria}">${esc(c)}</button>`).join('')}
         </div>
+        <button type="button" class="ver-mas" id="ver-mas" hidden></button>
       </div>
       <div class="grilla" id="grilla"></div>
     </div>`;
   $('#buscar').addEventListener('input', (e) => { busqueda = e.target.value; dibujarGrilla(); });
+  $('#filtro-marca')?.addEventListener('change', (e) => {
+    marca = e.target.value;
+    e.target.classList.toggle('elegida', Boolean(marca));
+    dibujarGrilla();
+  });
+  // Las categorias van en varias lineas; si son muchas, se muestran dos lineas y "Ver todas".
+  const chips = $('#chips');
+  const boton = $('#ver-mas');
+  const total = categorias.length;
+  chips.classList.add('recogidas');
+  const actualizarVerMas = () => {
+    const sobran = chips.scrollHeight > chips.clientHeight + 2;
+    boton.hidden = !sobran && chips.classList.contains('recogidas');
+    boton.textContent = chips.classList.contains('recogidas') ? `Ver todas las categorías (${total})` : 'Ver menos';
+  };
+  boton.addEventListener('click', () => { chips.classList.toggle('recogidas'); actualizarVerMas(); });
+  // Si la categoria elegida quedo escondida, se abre la lista para que se vea.
+  const elegida = chips.querySelector('[aria-pressed="true"]');
+  if (elegida && elegida.offsetTop >= chips.clientHeight) chips.classList.remove('recogidas');
+  actualizarVerMas();
+  window.onresize = actualizarVerMas;
   // Un solo manejador para los chips y el aviso de ofertas de la grilla.
   $('#principal').onclick = (e) => {
     const b = e.target.closest('[data-cat]');
@@ -172,9 +204,10 @@ function dibujarGrilla() {
   const texto = normalizar(busqueda);
   const lista = catalogo.productos.filter((p) => (!categoria || p.categoria === categoria
       || (categoria === OFERTAS && p.precioAntes) || (categoria === SETS && p.combo))
+    && (!marca || p.marca === marca)
     && normalizar(`${p.nombre} ${p.marca} ${p.categoria || ''}`).includes(texto));
   const hayOfertas = catalogo.productos.some((p) => p.precioAntes && p.disponible > 0);
-  const avisoOfertas = hayOfertas && !categoria && !texto
+  const avisoOfertas = hayOfertas && !categoria && !marca && !texto
     ? `<button type="button" class="aviso-ofertas" data-cat="${OFERTAS}"><span class="tile">${ICONO_OFERTA.replace(/16/g, '20')}</span>
         <span><strong>Ofertas especiales</strong><span class="texto">Precios especiales en productos seleccionados</span></span></button>` : '';
   $('#grilla').innerHTML = avisoOfertas + lista.map((p) => {
