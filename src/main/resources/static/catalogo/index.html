@@ -110,6 +110,8 @@
     .filtros select.elegida { border: 1.5px solid var(--principal); color: var(--principal); font-weight: 600; }
     @media (max-width: 520px) { .filtros input, .filtros select { flex-basis: 100%; max-width: none; } }
     /* Categorias en varias lineas para que se vean todas; si son muchas, dos lineas y "Ver todas". */
+    .filtro-activo:not(:empty) { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 6px 14px; margin: -8px 0 16px; font-size: 15px; }
+    .filtro-activo button { min-height: 36px; padding: 0 14px; border: 1px solid var(--borde-chip); border-radius: 999px; background: var(--superficie); color: var(--principal); font: inherit; font-size: 14px; font-weight: 600; cursor: pointer; }
     .chips { position: relative; display: flex; flex-wrap: wrap; gap: 8px; }
     .chips.recogidas { max-height: 96px; overflow: hidden; }
     .ver-mas { align-self: flex-start; min-height: 36px; margin-top: -6px; padding: 0 4px; border: 0; background: none; color: var(--principal); font: inherit; font-size: 14px; font-weight: 600; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }

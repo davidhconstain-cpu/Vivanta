@@ -83,7 +83,6 @@ function mantenimiento() {
   </div></div>`;
 }
 
-const ICONO_SET = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="8" width="18" height="13" rx="2"/><path d="M12 8v13M3 12h18M12 8c-1.5-3-5-4-5-1.5S10 8 12 8zm0 0c1.5-3 5-4 5-1.5S14 8 12 8z"/></svg>';
 const ICONO_OFERTA ='<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12V4h8l10 10-8 8L3 12z"/><circle cx="7.5" cy="8.5" r="1"/></svg>';
 
 const FRASE = 'Un universo de belleza por descubrir.';
@@ -173,7 +172,6 @@ function irACategoria(cat) {
 // ---------- Pantalla 1: productos ----------
 
 function pantallaProductos() {
-  const categorias = [...new Set(catalogo.productos.map((p) => p.categoria).filter(Boolean))].sort();
   const marcas = [...new Set(catalogo.productos.map((p) => p.marca).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'es'));
   const cuantos = (m) => catalogo.productos.filter((p) => p.marca === m).length;
   const destacadas = catalogo.categoriasDestacadas || [];
@@ -216,15 +214,7 @@ function pantallaProductos() {
     </section>` : ''}
     <div class="contenedor" id="productos">
       <h2 class="titulo-seccion">Nuestros <em>productos</em></h2>
-      <div class="filtros">
-        <div class="chips" id="chips" role="group" aria-label="Categorías">
-          <button type="button" data-cat="" aria-pressed="${!categoria}">Todos</button>
-          ${catalogo.productos.some((p) => p.precioAntes) ? `<button type="button" class="chip-oferta" data-cat="${OFERTAS}" aria-pressed="${categoria === OFERTAS}">${ICONO_OFERTA}Ofertas</button>` : ''}
-          ${catalogo.productos.some((p) => p.combo) ? `<button type="button" class="chip-set" data-cat="${SETS}" aria-pressed="${categoria === SETS}">${ICONO_SET}Sets</button>` : ''}
-          ${categorias.map((c) => `<button type="button" data-cat="${esc(c)}" aria-pressed="${c === categoria}">${esc(c)}</button>`).join('')}
-        </div>
-        <button type="button" class="ver-mas" id="ver-mas" hidden></button>
-      </div>
+      <div class="filtro-activo" id="filtro-activo" aria-live="polite"></div>
       <div class="grilla" id="grilla"></div>
     </div>`;
   $('#buscar').addEventListener('input', (e) => { busqueda = e.target.value; dibujarGrilla(); });
@@ -233,30 +223,13 @@ function pantallaProductos() {
     e.target.classList.toggle('elegida', Boolean(marca));
     dibujarGrilla();
   });
-  // Las categorias van en varias lineas; si son muchas, se muestran dos lineas y "Ver todas".
-  const chips = $('#chips');
-  const boton = $('#ver-mas');
-  const total = categorias.length;
-  chips.classList.add('recogidas');
-  const actualizarVerMas = () => {
-    const sobran = chips.scrollHeight > chips.clientHeight + 2;
-    boton.hidden = !sobran && chips.classList.contains('recogidas');
-    boton.textContent = chips.classList.contains('recogidas') ? `Ver todas las categorías (${total})` : 'Ver menos';
-  };
-  boton.addEventListener('click', () => { chips.classList.toggle('recogidas'); actualizarVerMas(); });
-  // Si la categoria elegida quedo escondida, se abre la lista para que se vea.
-  const elegida = chips.querySelector('[aria-pressed="true"]');
-  if (elegida && elegida.offsetTop >= chips.clientHeight) chips.classList.remove('recogidas');
-  actualizarVerMas();
-  window.onresize = actualizarVerMas;
-  // Un solo manejador para los chips y el aviso de ofertas de la grilla.
+  // Las categorias se eligen en el menu o en las tarjetas destacadas; aqui solo el aviso de ofertas y "Ver todos".
   $('#principal').onclick = (e) => {
     const promo = e.target.closest('[data-producto]');
     if (promo) { verDetalle(producto(promo.dataset.producto)); return; }
     const b = e.target.closest('[data-cat]');
     if (!b) return;
     categoria = b.dataset.cat;
-    $$('.chips [data-cat]').forEach((x) => x.setAttribute('aria-pressed', String(x.dataset.cat === categoria)));
     dibujarGrilla();
   };
   $('#principal').onkeydown = (e) => {
@@ -307,6 +280,10 @@ function precioHtml(p) {
 
 function dibujarGrilla() {
   const texto = normalizar(busqueda);
+  // Sin la fila de categorias, se indica que filtro esta puesto y como quitarlo.
+  const nombreFiltro = categoria === OFERTAS ? 'Ofertas' : categoria === SETS ? 'Sets' : categoria;
+  $('#filtro-activo').innerHTML = nombreFiltro
+    ? `<span>Mostrando: <strong>${esc(nombreFiltro)}</strong></span><button type="button" data-cat="">Ver todos los productos ✕</button>` : '';
   const lista = catalogo.productos.filter((p) => (!categoria || p.categoria === categoria
       || (categoria === OFERTAS && p.precioAntes) || (categoria === SETS && p.combo))
     && (!marca || p.marca === marca)
