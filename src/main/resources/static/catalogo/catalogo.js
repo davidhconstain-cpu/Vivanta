@@ -273,21 +273,69 @@ document.addEventListener('click', (e) => {
   if (detalle) verDetalle(producto(detalle.dataset.detalle));
 });
 
+/**
+ * Detalle del producto: foto a la izquierda y datos a la derecha (en el celular, uno debajo del otro).
+ * En un set se listan los productos que incluye, cada uno con su foto.
+ */
 function verDetalle(p) {
+  const fotos = p.imagenes.length ? p.imagenes.map((i) => `/api/public/imagenes/${i}`) : [foto(p)];
+  const antes = tachado(p);
+  const porcentaje = antes ? Math.round((1 - p.precio / antes) * 100) : 0;
+  const quedan = p.disponible - (carrito[p.id] || 0);
+  let cantidad = 1;
   const fondo = document.createElement('div');
   fondo.className = 'modal-fondo';
-  fondo.innerHTML = `<div class="modal">
-    <div class="modal-cabecera"><h2>${esc(p.nombre)}</h2><button class="icono" data-cerrar aria-label="Cerrar">✕</button></div>
-    <div class="detalle-fotos">${p.imagenes.length ? p.imagenes.map((i) => `<img src="/api/public/imagenes/${i}" alt="">`).join('') : `<img src="${foto(p)}" alt="">`}</div>
-    <p class="suave">${esc(p.marca)}${p.categoria ? ' · ' + esc(p.categoria) : ''}</p>
-    ${p.combo ? `<p style="margin:0"><strong>Este set incluye:</strong> ${esc(p.incluye)}</p>` : ''}
-    ${p.descripcion ? `<p style="white-space:pre-line">${esc(p.descripcion)}</p>` : ''}
-    <p class="cifra" style="font-size:2rem;margin:0">${tachado(p) ? `<s class="antes">${cop(tachado(p))}</s> ` : ''}${cop(p.precio)}</p>
-    ${p.combo && !p.precioAntes && tachado(p) ? `<p class="vigencia" style="margin:0">Ahorras ${cop(tachado(p) - p.precio)} comprando el set</p>` : ''}
-    ${p.precioAntes ? `<p class="vigencia" style="margin:0">Oferta −${descuento(p)} %${p.ofertaHasta ? " · hasta el " + fechaLarga(p.ofertaHasta) : ""}</p>` : ""}
-    <div class="modal-pie">${p.disponible > 0 ? `<button class="primario" data-mas="${p.id}" data-cerrar>Agregar al pedido</button>` : '<span class="etiqueta agotado">Agotado</span>'}</div>
+  fondo.innerHTML = `<div class="modal detalle-producto" role="dialog" aria-label="${esc(p.nombre)}">
+    <button class="icono cerrar-detalle" data-cerrar aria-label="Cerrar">✕</button>
+    <div class="detalle-grid">
+      <div class="detalle-galeria">
+        <div class="foto-grande ${p.imagenes.length ? 'con-foto' : ''}">
+          <img id="foto-grande" src="${fotos[0]}" alt="${esc(p.nombre)}" class="${p.imagenes.length ? '' : 'sin-foto'}">
+          ${porcentaje > 0 ? `<span class="insignia-descuento">−${porcentaje} %</span>` : ''}
+        </div>
+        ${fotos.length > 1 ? `<div class="miniaturas">${fotos.map((f, i) => `<button type="button" data-foto="${i}" aria-label="Foto ${i + 1}" aria-pressed="${i === 0}"><img src="${f}" alt=""></button>`).join('')}</div>` : ''}
+      </div>
+      <div class="detalle-info">
+        ${p.combo ? '<span class="pastilla-set">Set</span>' : p.categoria ? `<span class="categoria-prod">${esc(p.categoria)}</span>` : ''}
+        <h2 class="detalle-nombre">${esc(p.nombre)}</h2>
+        <p class="suave" style="margin:0">${esc(p.marca)}${p.combo && p.categoria ? ' · ' + esc(p.categoria) : ''}</p>
+        <p class="detalle-precio">${antes ? `<s class="antes">${cop(antes)}</s>` : ''}<span>${cop(p.precio)}</span></p>
+        ${p.precioAntes ? `<p class="vigencia" style="margin:0">Oferta −${descuento(p)} %${p.ofertaHasta ? ' · hasta el ' + fechaLarga(p.ofertaHasta) : ''}</p>`
+          : p.combo && antes ? `<p class="vigencia" style="margin:0">Ahorras ${cop(antes - p.precio)} comprando el set</p>` : ''}
+        ${p.combo && p.productosDelSet?.length ? `<div class="incluye-set"><h3>Este set incluye</h3><ul>${p.productosDelSet.map((c) => `<li>
+            <img src="${c.imagenId ? '/api/public/imagenes/' + c.imagenId : '/img/isotipo-vivanta.png'}" alt="" loading="lazy">
+            <div><strong>${c.cantidad > 1 ? c.cantidad + ' × ' : ''}${esc(c.nombre)}</strong><span>Precio suelto ${cop(c.precio)}</span></div></li>`).join('')}</ul></div>` : ''}
+        ${p.descripcion ? `<p class="detalle-descripcion">${esc(p.descripcion)}</p>` : ''}
+        ${quedan > 0 ? `<div class="detalle-compra">
+            <span class="suave">Cantidad</span>
+            <div class="stepper"><button type="button" id="det-menos" aria-label="Quitar una unidad">−</button><output id="det-cantidad">1</output><button type="button" class="mas" id="det-mas" aria-label="Agregar una unidad">+</button></div>
+            <button type="button" class="primario agregar-detalle" id="det-agregar">Agregar al pedido</button>
+          </div>`
+          : `<p style="margin:0"><span class="etiqueta agotado">${p.disponible > 0 ? 'Ya tienes en tu pedido todas las unidades disponibles' : 'Agotado'}</span></p>`}
+      </div>
+    </div>
   </div>`;
-  fondo.addEventListener('click', (e) => { if (e.target === fondo || e.target.closest('[data-cerrar]')) fondo.remove(); });
+  fondo.addEventListener('click', (e) => {
+    if (e.target === fondo || e.target.closest('[data-cerrar]')) fondo.remove();
+    const miniatura = e.target.closest('[data-foto]');
+    if (miniatura) {
+      $('#foto-grande', fondo).src = fotos[miniatura.dataset.foto];
+      $$('[data-foto]', fondo).forEach((b) => b.setAttribute('aria-pressed', String(b === miniatura)));
+    }
+  });
+  if (quedan > 0) {
+    const mostrar = () => { $('#det-cantidad', fondo).textContent = cantidad; };
+    $('#det-menos', fondo).addEventListener('click', () => { cantidad = Math.max(1, cantidad - 1); mostrar(); });
+    $('#det-mas', fondo).addEventListener('click', () => {
+      if (cantidad >= quedan) { avisar('Solo hay ' + p.disponible + ' unidades disponibles', 'error'); return; }
+      cantidad += 1; mostrar();
+    });
+    $('#det-agregar', fondo).addEventListener('click', () => {
+      cambiarCantidad(p.id, cantidad);
+      avisar(cantidad + (cantidad === 1 ? ' unidad agregada' : ' unidades agregadas') + ' a tu pedido');
+      fondo.remove();
+    });
+  }
   document.body.append(fondo);
 }
 

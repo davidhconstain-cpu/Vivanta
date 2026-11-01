@@ -128,8 +128,42 @@
     .categorias-pie a:hover { border-color: var(--principal); color: var(--principal); }
 
     .mantenimiento { max-width: 520px; margin: 0 auto; text-align: center; display: flex; flex-direction: column; gap: 12px; align-items: center; }
-    .detalle-fotos { display: flex; gap: 8px; overflow-x: auto; scroll-snap-type: x mandatory; }
-    .detalle-fotos img { width: 100%; max-height: 60vh; object-fit: contain; flex: 0 0 100%; scroll-snap-align: start; border-radius: 12px; background: var(--rosa); }
+    /* Detalle del producto: foto a la izquierda, datos y lo que incluye el set a la derecha. */
+    .modal.detalle-producto { position: relative; max-width: 960px; padding: 28px; }
+    .cerrar-detalle { position: absolute; top: 12px; right: 12px; z-index: 2; }
+    .detalle-grid { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); gap: 32px; align-items: start; }
+    .foto-grande { position: relative; aspect-ratio: 1 / 1; border-radius: 16px; overflow: hidden; background: var(--rosa); display: flex; align-items: center; justify-content: center; }
+    .foto-grande.con-foto { background: #fff; border: 1px solid var(--linea); }
+    .foto-grande img { width: 100%; height: 100%; object-fit: contain; }
+    .foto-grande img.sin-foto { width: 96px; height: 96px; border-radius: 20px; }
+    .insignia-descuento { position: absolute; top: 14px; left: 14px; padding: 6px 14px; border-radius: 10px; background: var(--texto); color: #fff; font-size: 18px; font-weight: 600; }
+    .miniaturas { display: flex; gap: 8px; margin-top: 10px; overflow-x: auto; }
+    .miniaturas button { flex: 0 0 64px; width: 64px; height: 64px; min-height: 0; padding: 0; border: 1px solid var(--borde); border-radius: 10px; background: #fff; overflow: hidden; }
+    .miniaturas button[aria-pressed="true"] { border: 2px solid var(--principal); }
+    .miniaturas img { width: 100%; height: 100%; object-fit: contain; }
+    .detalle-info { display: flex; flex-direction: column; gap: 10px; padding-top: 8px; }
+    .detalle-info .pastilla-set { align-self: flex-start; }
+    .detalle-info .categoria-prod { font-size: 11px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--texto-suave); }
+    .detalle-nombre { margin: 0; padding-right: 36px; font-family: var(--fuente-marca); font-size: 32px; font-weight: 700; line-height: 1.1; }
+    .detalle-precio { margin: 4px 0 0; display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; }
+    .detalle-precio .antes { font-family: var(--fuente); font-size: 18px; font-weight: 400; color: var(--texto-suave); }
+    .detalle-precio span { font-family: var(--fuente-marca); font-size: 34px; font-weight: 700; line-height: 1; }
+    .incluye-set { border-top: 1px solid var(--linea); padding-top: 12px; }
+    .incluye-set h3 { margin: 0 0 6px; font-family: var(--fuente); font-size: 13px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--texto-suave); }
+    .incluye-set ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+    .incluye-set li { display: flex; align-items: center; gap: 14px; padding: 10px 0; border-bottom: 1px solid var(--linea); }
+    .incluye-set img { flex: 0 0 60px; width: 60px; height: 60px; border-radius: 10px; object-fit: contain; background: #fff; border: 1px solid var(--linea); }
+    .incluye-set strong { display: block; font-size: 14px; font-weight: 600; text-transform: uppercase; letter-spacing: .02em; }
+    .incluye-set span { font-size: 13px; color: var(--texto-suave); }
+    .detalle-descripcion { margin: 0; white-space: pre-line; line-height: 1.5; }
+    .detalle-compra { display: flex; flex-direction: column; gap: 8px; margin-top: 6px; }
+    .detalle-compra .stepper { max-width: 180px; }
+    .agregar-detalle { min-height: 52px; border-radius: 14px; font-size: 16px; }
+    @media (max-width: 720px) {
+      .modal.detalle-producto { padding: 18px; }
+      .detalle-grid { grid-template-columns: 1fr; gap: 16px; }
+      .detalle-nombre { font-size: 26px; }
+    }
     .cifra .antes { font-family: var(--fuente); font-size: 16px; font-weight: 400; color: var(--texto-suave); }
     .vigencia { color: var(--oferta); }
 

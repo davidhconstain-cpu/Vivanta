@@ -216,7 +216,12 @@ public final class Dtos {
             /** Con oferta activa: precio normal (tachado) y ultimo dia; si no, 0 y null. */
             long precioAntes, LocalDate ofertaHasta,
             /** Sets: "Kaiak Clasico, Kaiak Aventura" y el precio de comprarlos por separado. */
-            boolean combo, String incluye, long precioSeparado) {
+            boolean combo, String incluye, long precioSeparado,
+            /** Sets: cada producto que incluye, con su foto, para el detalle del catalogo. */
+            List<ProductoDelSetDto> productosDelSet) {
+    }
+
+    public record ProductoDelSetDto(String nombre, int cantidad, long precio, Long imagenId) {
     }
 
     public record CatalogoDto(boolean habilitado, NegocioPublicoDto negocio, List<ProductoCatalogoDto> productos) {

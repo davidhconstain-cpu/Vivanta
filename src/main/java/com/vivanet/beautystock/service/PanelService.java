@@ -15,6 +15,7 @@ import com.vivanet.beautystock.dto.Dtos.AlertaDto;
 import com.vivanet.beautystock.dto.Dtos.CatalogoDto;
 import com.vivanet.beautystock.dto.Dtos.PanelDto;
 import com.vivanet.beautystock.dto.Dtos.ProductoCatalogoDto;
+import com.vivanet.beautystock.dto.Dtos.ProductoDelSetDto;
 import com.vivanet.beautystock.dto.Dtos.ProductoDto;
 import com.vivanet.beautystock.entity.Compra;
 import com.vivanet.beautystock.entity.Configuracion;
@@ -138,7 +139,11 @@ public class PanelService {
                         p.combo(), p.componentes().stream()
                                 .map(c -> (c.cantidad() > 1 ? c.cantidad() + " × " : "") + c.nombre())
                                 .collect(java.util.stream.Collectors.joining(", ")),
-                        p.precioSeparado()))
+                        p.precioSeparado(),
+                        p.componentes().stream()
+                                .map(c -> new ProductoDelSetDto(c.nombre(), c.cantidad(), c.precioActual(),
+                                        imagenes.getOrDefault(c.productoId(), List.of()).stream().findFirst().orElse(null)))
+                                .toList()))
                 .toList();
         return new CatalogoDto(true, configuracion.negocioPublico(), lista);
     }
