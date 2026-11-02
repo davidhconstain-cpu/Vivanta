@@ -199,7 +199,7 @@ function pantallaProductos() {
       <h2 class="titulo-seccion">Nuestras categorías <em>más buscadas</em></h2>
       <div class="tarjetas-categoria" style="--columnas:${destacadas.length}">
         ${destacadas.map((c) => `<button type="button" class="tarjeta-categoria" data-ir-cat="${esc(c.nombre)}">
-          <span class="arte">${c.imagenUrl ? `<img src="${esc(c.imagenUrl)}" alt="" loading="lazy">` : '<span aria-hidden="true">✿</span>'}</span>
+          <span class="arte ${c.imagenUrl ? '' : 'sin-foto'}">${c.imagenUrl ? `<img src="${esc(c.imagenUrl)}" alt="" loading="lazy">` : '<span aria-hidden="true">✿</span>'}</span>
           <span class="nombre">${esc(c.nombre)}</span></button>`).join('')}
       </div></section>` : ''}
     ${promos.length ? `<section class="carrusel" aria-label="Promociones destacadas">
