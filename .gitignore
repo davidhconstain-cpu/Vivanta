@@ -37,3 +37,6 @@ local.properties
 
 ### Office temporales ###
 ~$*
+
+### Copias de seguridad de la base de datos (datos de clientes: solo en este PC) ###
+copia de seguridad/
