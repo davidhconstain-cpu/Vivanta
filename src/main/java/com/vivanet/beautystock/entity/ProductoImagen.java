@@ -9,7 +9,7 @@ import jakarta.persistence.Id;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 
-/** Imagen de un producto, guardada en la base de datos (bytea). */
+/** Imagen de un producto: en Cloudinary (url) o, sin Cloudinary, en la base de datos (datos). */
 @Entity
 @Table(name = "producto_imagenes")
 public class ProductoImagen {
@@ -28,6 +28,11 @@ public class ProductoImagen {
 
     private boolean principal;
 
+    /** Direccion en Cloudinary; si es null, la foto esta en datos. */
+    private String url;
+
+    private String publicId;
+
     public Long getId() { return id; }
     public Producto getProducto() { return producto; }
     public void setProducto(Producto producto) { this.producto = producto; }
@@ -37,4 +42,8 @@ public class ProductoImagen {
     public void setDatos(byte[] datos) { this.datos = datos; }
     public boolean isPrincipal() { return principal; }
     public void setPrincipal(boolean principal) { this.principal = principal; }
+    public String getUrl() { return url; }
+    public void setUrl(String url) { this.url = url; }
+    public String getPublicId() { return publicId; }
+    public void setPublicId(String publicId) { this.publicId = publicId; }
 }

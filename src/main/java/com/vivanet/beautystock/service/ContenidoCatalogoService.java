@@ -32,12 +32,14 @@ public class ContenidoCatalogoService {
     private final PromocionRepository promociones;
     private final CategoriaRepository categorias;
     private final ImagenCatalogoRepository imagenes;
+    private final ImagenesNube nube;
 
     public ContenidoCatalogoService(PromocionRepository promociones, CategoriaRepository categorias,
-            ImagenCatalogoRepository imagenes) {
+            ImagenCatalogoRepository imagenes, ImagenesNube nube) {
         this.promociones = promociones;
         this.categorias = categorias;
         this.imagenes = imagenes;
+        this.nube = nube;
     }
 
     // ---------- Promociones ----------
@@ -133,11 +135,16 @@ public class ContenidoCatalogoService {
 
     // ---------- Imagenes ----------
 
+    /** Si la foto esta en Cloudinary solo se lee su direccion, sin traer bytes de la base. */
     @Transactional(readOnly = true)
-    public ImagenCatalogo imagen(Long id) {
-        ImagenCatalogo imagen = imagenes.findById(id).orElseThrow(() -> new NegocioException("Imagen no encontrada."));
-        imagen.getDatos();
-        return imagen;
+    public ImagenesNube.Foto imagen(Long id) {
+        Object[] fila = imagenes.direccion(id).stream().findFirst()
+                .orElseThrow(() -> new NegocioException("Imagen no encontrada."));
+        if (fila[1] != null) {
+            return new ImagenesNube.Foto(ImagenesNube.paraMostrar((String) fila[1]), null, null);
+        }
+        ImagenCatalogo imagen = imagenes.findById(id).orElseThrow();
+        return new ImagenesNube.Foto(null, imagen.getContentType(), imagen.getDatos());
     }
 
     /** Guarda la imagen nueva y borra la anterior; devuelve el id nuevo. */
@@ -146,14 +153,25 @@ public class ContenidoCatalogoService {
         if (tipo == null || !tipo.startsWith("image/")) {
             throw new NegocioException("El archivo debe ser una imagen.");
         }
-        Long nuevo = imagenes.save(new ImagenCatalogo(tipo, archivo.getBytes())).getId();
+        ImagenCatalogo imagen;
+        if (nube.activa()) {
+            var subida = nube.subir(archivo.getBytes(), tipo, "catalogo");
+            imagen = new ImagenCatalogo(tipo, null);
+            imagen.enNube(subida.url(), subida.publicId());
+        } else {
+            imagen = new ImagenCatalogo(tipo, archivo.getBytes());
+        }
+        Long nuevo = imagenes.save(imagen).getId();
         borrarImagen(anterior);
         return nuevo;
     }
 
     private void borrarImagen(Long id) {
         if (id != null) {
-            imagenes.deleteById(id);
+            imagenes.findById(id).ifPresent(imagen -> {
+                imagenes.delete(imagen);
+                nube.borrar(imagen.getPublicId());
+            });
         }
     }
 

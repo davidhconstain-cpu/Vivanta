@@ -5,7 +5,6 @@ import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 
-import org.springframework.http.CacheControl;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -80,10 +79,6 @@ public class ContenidoCatalogoController {
     /** Publica: la usa el catalogo. Una imagen nunca cambia (al reemplazarla cambia el id). */
     @GetMapping("/api/public/catalogo-imagenes/{id}")
     public ResponseEntity<byte[]> imagen(@PathVariable Long id) {
-        var imagen = servicio.imagen(id);
-        return ResponseEntity.ok()
-                .contentType(MediaType.parseMediaType(imagen.getContentType()))
-                .cacheControl(CacheControl.maxAge(Duration.ofDays(30)).cachePublic())
-                .body(imagen.getDatos());
+        return RespuestaFoto.de(servicio.imagen(id), Duration.ofDays(30));
     }
 }

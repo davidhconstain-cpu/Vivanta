@@ -4,7 +4,6 @@ import java.io.IOException;
 import java.util.List;
 import java.util.Map;
 
-import org.springframework.http.CacheControl;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -118,10 +117,6 @@ public class ProductoController {
     /** Publica: la usa tambien el catalogo. */
     @GetMapping("/public/imagenes/{id}")
     public ResponseEntity<byte[]> imagen(@PathVariable Long id) {
-        var imagen = servicio.imagen(id);
-        return ResponseEntity.ok()
-                .contentType(MediaType.parseMediaType(imagen.getContentType()))
-                .cacheControl(CacheControl.maxAge(java.time.Duration.ofDays(7)).cachePublic())
-                .body(imagen.getDatos());
+        return RespuestaFoto.de(servicio.imagen(id), java.time.Duration.ofDays(7));
     }
 }

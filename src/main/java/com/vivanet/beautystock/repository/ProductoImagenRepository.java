@@ -23,4 +23,18 @@ public interface ProductoImagenRepository extends JpaRepository<ProductoImagen, 
 
     @Query("select min(i.id) from ProductoImagen i where i.producto.id = :productoId")
     Long primeraDelProducto(Long productoId);
+    /** Direccion en Cloudinary de la foto, sin cargar los bytes: [id, url] o vacio si no existe. */
+    @Query("select i.id, i.url from ProductoImagen i where i.id = :id")
+    List<Object[]> direccion(Long id);
+
+    /** Fotos que todavia estan solo en la base de datos. */
+    @Query("select i.id from ProductoImagen i where i.url is null and i.datos is not null order by i.id")
+    List<Long> pendientesDeNube();
+
+    @Modifying
+    @Query("update ProductoImagen i set i.url = :url, i.publicId = :publicId where i.id = :id")
+    void pasarANube(Long id, String url, String publicId);
+
+    @Query("select i.publicId from ProductoImagen i where i.producto.id = :productoId and i.publicId is not null")
+    List<String> publicIdsDeProducto(Long productoId);
 }

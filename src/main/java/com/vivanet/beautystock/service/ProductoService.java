@@ -43,11 +43,13 @@ public class ProductoService {
     private final ConsecutivoService consecutivos;
     private final ConfiguracionService configuracion;
     private final ComboItemRepository combos;
+    private final ImagenesNube nube;
 
     public ProductoService(ProductoRepository productos, CategoriaRepository categorias,
             ProductoImagenRepository imagenes, HistorialPrecioRepository historial, InventarioService inventario,
-            ConsecutivoService consecutivos, ConfiguracionService configuracion, ComboItemRepository combos) {
+            ConsecutivoService consecutivos, ConfiguracionService configuracion, ComboItemRepository combos, ImagenesNube nube) {
         this.combos = combos;
+        this.nube = nube;
         this.productos = productos;
         this.categorias = categorias;
         this.imagenes = imagenes;
@@ -191,10 +193,12 @@ public class ProductoService {
                     + " tiene compras, ventas, pedidos o movimientos registrados, o está dentro de un set;"
                     + " no se puede eliminar. Déjalo desactivado.");
         }
+        List<String> enNube = imagenes.publicIdsDeProducto(id);
         combos.borrarDeCombo(id);
         productos.borrarImagenes(id);
         productos.borrarHistorial(id);
         productos.delete(p);
+        enNube.forEach(nube::borrar);
     }
 
     @Transactional(readOnly = true)
@@ -221,7 +225,13 @@ public class ProductoService {
         ProductoImagen imagen = new ProductoImagen();
         imagen.setProducto(producto);
         imagen.setContentType(tipo);
-        imagen.setDatos(archivo.getBytes());
+        if (nube.activa()) {
+            var subida = nube.subir(archivo.getBytes(), tipo, "productos");
+            imagen.setUrl(subida.url());
+            imagen.setPublicId(subida.publicId());
+        } else {
+            imagen.setDatos(archivo.getBytes());
+        }
         imagen.setPrincipal(imagenes.contarPorProducto(productoId) == 0);
         imagenes.save(imagen);
     }
@@ -239,8 +249,10 @@ public class ProductoService {
                 .orElseThrow(() -> new NegocioException("Imagen no encontrada."));
         Long productoId = imagen.getProducto().getId();
         boolean eraPrincipal = imagen.isPrincipal();
+        String publicId = imagen.getPublicId();
         imagenes.delete(imagen);
         imagenes.flush();
+        nube.borrar(publicId);
         if (eraPrincipal) {
             Long otra = imagenes.primeraDelProducto(productoId);
             if (otra != null) {
@@ -249,12 +261,16 @@ public class ProductoService {
         }
     }
 
+    /** Si la foto esta en Cloudinary solo se lee su direccion, sin traer bytes de la base. */
     @Transactional(readOnly = true)
-    public ProductoImagen imagen(Long imagenId) {
-        ProductoImagen imagen = imagenes.findById(imagenId)
+    public ImagenesNube.Foto imagen(Long imagenId) {
+        Object[] fila = imagenes.direccion(imagenId).stream().findFirst()
                 .orElseThrow(() -> new NegocioException("Imagen no encontrada."));
-        imagen.getDatos();
-        return imagen;
+        if (fila[1] != null) {
+            return new ImagenesNube.Foto(ImagenesNube.paraMostrar((String) fila[1]), null, null);
+        }
+        ProductoImagen imagen = imagenes.findById(imagenId).orElseThrow();
+        return new ImagenesNube.Foto(null, imagen.getContentType(), imagen.getDatos());
     }
 
     /** Ids de imagenes por producto, la principal primero. */
