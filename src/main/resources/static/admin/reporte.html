@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Reporte · Vivanta Colección</title>
+  <link rel="icon" type="image/png" href="/img/favicon.png">
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@600;700&family=Jost:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/estilos.css">
+  <style>
+    /* El reporte siempre se imprime en claro, como el recibo */
+    :root, :root[data-theme] { color-scheme: light; --fondo: #F2F0EB; --superficie: #fff; --texto: #3A2A2E; --texto-suave: #6E5A5F; --borde: #E6DFD8; --linea: #EFE8E1; --principal: #B04856; --marca: #C65360; --rosa: #F3D8D8; --superficie-2: #FAF7F4; --exito: #2F7A52; --peligro: #B3261E; }
+    body { background: var(--fondo); padding: 16px; }
+    .hoja { max-width: 820px; margin: 0 auto; background: #fff; padding: 2em; border-radius: 14px; box-shadow: var(--sombra); border-top: 8px solid var(--principal); }
+    .encabezado { display: flex; gap: 1.2em; align-items: center; border-bottom: 2px solid var(--rosa); padding-bottom: 1em; margin-bottom: 1.2em; flex-wrap: wrap; }
+    .encabezado img { max-height: 60px; max-width: 150px; }
+    .encabezado .datos { flex: 1; }
+    .encabezado .datos p { margin: 4px 0 0; color: var(--texto-suave); }
+    .resumen { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 10px; margin-bottom: 1.4em; }
+    .resumen div { border: 1px solid var(--borde); border-radius: 10px; padding: 10px 12px; }
+    .resumen span { display: block; font-size: .8rem; color: var(--texto-suave); }
+    .resumen strong { font-size: 1.25rem; }
+    .sube { color: var(--exito); } .baja { color: var(--peligro); }
+    h2 { font-size: 1.1rem; margin: 1.4em 0 .5em; }
+    table { font-size: .88rem; }
+    th, td { padding: 6px 8px; }
+    tfoot th { border-top: 2px solid var(--borde); }
+    .acciones { max-width: 820px; margin: 0 auto 1em; display: flex; gap: .6em; justify-content: flex-end; }
+    .nota { margin-top: 1.5em; font-size: .8rem; color: var(--texto-suave); border-top: 1px dashed var(--borde); padding-top: .8em; }
+    @media print {
+      body { background: #fff; padding: 0; }
+      .acciones { display: none; }
+      .hoja { box-shadow: none; border-radius: 0; padding: 0; border-top: 0; }
+      tr { break-inside: avoid; }
+    }
+  </style>
+</head>
+<body>
+  <div class="acciones"><button onclick="window.close()">Cerrar</button><button class="primario" onclick="window.print()">Imprimir / Guardar PDF</button></div>
+  <div class="hoja" id="hoja"><p class="suave">Cargando…</p></div>
+  <script>
+    const cop = (n) => '$' + Math.round(n || 0).toLocaleString('es-CO');
+    const esc = (t) => String(t ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    const fecha = (iso) => { const [a, m, d] = iso.split('-').map(Number); return new Date(a, m - 1, d).toLocaleDateString('es-CO', { day: 'numeric', month: 'long', year: 'numeric' }); };
+    const rango = (d, h) => d === h ? fecha(d) : fecha(d) + ' al ' + fecha(h);
+    const cambio = (x, y) => {
+      if (!y) return x ? '<span class="sube">nuevo</span>' : 'sin cambio';
+      const p = Math.round((x - y) * 100 / Math.abs(y));
+      return `<span class="${p > 0 ? 'sube' : p < 0 ? 'baja' : ''}">${p > 0 ? '▲' : p < 0 ? '▼' : ''} ${Math.abs(p)} %</span>`;
+    };
+    (async () => {
+      const [rr, cr] = await Promise.all([fetch('/api/reportes' + location.search), fetch('/api/configuracion')]);
+      if (!rr.ok || !cr.ok) { document.getElementById('hoja').textContent = 'No se pudo cargar el reporte.'; return; }
+      const r = await rr.json();
+      const c = await cr.json();
+      const a = r.resumen;
+      const b = r.comparacion;
+      document.title = 'Reporte ' + r.desde + ' al ' + r.hasta;
+      const caja = (titulo, x, y, dinero = true) => `<div><span>${titulo}</span><strong>${dinero ? cop(x) : x}</strong><span>${cambio(x, y)} frente a ${dinero ? cop(y) : y}</span></div>`;
+      const productos = r.productos.map((p) => ({ ...p, margen: p.ventas ? Math.round(p.utilidad * 100 / p.ventas) : 0 }));
+      const tabla = (lista) => lista.length ? `<table>
+          <thead><tr><th>#</th><th>Producto</th><th class="num">Und.</th><th class="num">Ventas</th><th class="num">Utilidad</th><th class="num">Margen</th></tr></thead>
+          <tbody>${lista.map((p, i) => `<tr><td>${i + 1}</td><td>${esc(p.nombre)}${p.marca ? ' · <span class="suave">' + esc(p.marca) + '</span>' : ''}</td><td class="num">${p.unidades}</td><td class="num">${cop(p.ventas)}</td><td class="num">${cop(p.utilidad)}</td><td class="num">${p.margen} %</td></tr>`).join('')}</tbody></table>`
+        : '<p class="suave">No hubo ventas en estas fechas.</p>';
+      document.getElementById('hoja').innerHTML = `
+        <div class="encabezado">
+          <img src="${c.tieneLogo ? '/api/public/logo' : '/img/logo-vivanta.png'}" alt="${esc(c.nombreNegocio)}">
+          <div class="datos">
+            <h1 class="marca" style="margin:0;font-size:1.7rem">Reporte de ventas y compras</h1>
+            <p>${esc(c.nombreNegocio)} · Del ${rango(r.desde, r.hasta)}</p>
+            <p>Comparado con: ${rango(r.compDesde, r.compHasta)}</p>
+          </div>
+        </div>
+        <div class="resumen">
+          ${caja('Ventas', a.ventas, b.ventas)}
+          ${caja('Utilidad estimada', a.utilidad, b.utilidad)}
+          ${caja('Compras de mercancía', a.compras, b.compras)}
+          ${caja('Número de ventas', a.numeroVentas, b.numeroVentas, false)}
+        </div>
+        <p class="suave" style="font-size:.85rem">Unidades vendidas: ${a.unidades} · Descuentos: ${cop(a.descuentos)} · Domicilios: ${cop(a.domicilios)} · Costos adicionales de compras: ${cop(a.costosAdicionales)}</p>
+        <h2>${{ DIA: 'Día por día', SEMANA: 'Semana por semana', MES: 'Mes por mes' }[r.agrupar]}</h2>
+        <table>
+          <thead><tr><th>Periodo</th><th class="num">Ventas</th><th class="num">Utilidad</th><th class="num">N.º ventas</th><th class="num">Compras</th></tr></thead>
+          <tbody>${r.periodos.map((p) => `<tr><td>${esc(p.etiqueta)}</td><td class="num">${cop(p.ventas)}</td><td class="num">${cop(p.utilidad)}</td><td class="num">${p.numeroVentas}</td><td class="num">${cop(p.compras)}</td></tr>`).join('')}</tbody>
+          <tfoot><tr><th>Total</th><th class="num">${cop(a.ventas)}</th><th class="num">${cop(a.utilidad)}</th><th class="num">${a.numeroVentas}</th><th class="num">${cop(a.compras)}</th></tr></tfoot>
+        </table>
+        <h2>Más vendidos</h2>
+        ${tabla([...productos].sort((x, y) => y.unidades - x.unidades || y.ventas - x.ventas).slice(0, 10))}
+        <h2>Más rentables</h2>
+        ${tabla([...productos].sort((x, y) => y.utilidad - x.utilidad).slice(0, 10))}
+        <h2>Menos rentables</h2>
+        ${tabla([...productos].sort((x, y) => x.utilidad - y.utilidad).slice(0, 10))}
+        <div class="nota">Utilidad estimada con el costo real de los lotes vendidos (PEPS), sin restar gastos del negocio. Las ventas incluyen el domicilio cobrado; la utilidad no. No se cuentan las ventas ni las compras anuladas. Generado el ${new Date().toLocaleString('es-CO')}</div>`;
+    })();
+  </script>
+</body>
+</html>

@@ -257,4 +257,26 @@ public final class Dtos {
             boolean whatsappConfigurado, int productosActivos,
             long metaVentasMes, long metaUtilidadMes, long clientesConSaldo) {
     }
+
+    // ---------- Reportes ----------
+
+    /** Totales de un rango de fechas. "ventas" incluye el domicilio cobrado; la utilidad no. */
+    public record ResumenReporteDto(long ventas, long utilidad, int numeroVentas, long unidades, long descuentos,
+            long domicilios, long compras, long costosAdicionales, int numeroCompras) {
+    }
+
+    /** Una fila del reporte por dia, semana o mes. */
+    public record PeriodoReporteDto(String etiqueta, LocalDate desde, LocalDate hasta, long ventas, long utilidad,
+            int numeroVentas, long compras) {
+    }
+
+    /** Lo vendido de un producto en el rango (ya con su parte del descuento global de cada venta). */
+    public record ProductoReporteDto(Long id, String nombre, String marca, long unidades, long ventas, long utilidad) {
+    }
+
+    public record ReporteDto(LocalDate desde, LocalDate hasta, String agrupar, ResumenReporteDto resumen,
+            /** Periodo con el que se compara. */
+            LocalDate compDesde, LocalDate compHasta, ResumenReporteDto comparacion,
+            List<PeriodoReporteDto> periodos, List<ProductoReporteDto> productos) {
+    }
 }

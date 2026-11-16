@@ -26,4 +26,12 @@ public interface VentaRepository extends JpaRepository<Venta, Long> {
     /** [clienteId, saldo, ultima compra] por cliente. */
     @Query("select v.cliente.id, sum(case when v.estado = com.vivanet.beautystock.entity.EstadoVenta.ACTIVA then v.total - v.pagado else 0 end), max(v.fechaHora) from Venta v where v.cliente is not null group by v.cliente.id")
     List<Object[]> resumenPorCliente();
+
+    /**
+     * Lineas de las ventas activas del rango, para los reportes. Una sola consulta con los datos sueltos:
+     * [ventaId, fechaHora, totalVenta, utilidadVenta, domicilio, subtotal, descuentoGlobal,
+     *  productoId, nombre, marca, cantidad, totalLinea, descuentoLinea, costoLinea]
+     */
+    @Query("select v.id, v.fechaHora, v.total, v.utilidad, v.cargoDomicilio, v.subtotal, v.descuentoGlobal, p.id, p.nombre, p.marca, i.cantidad, i.total, i.descuento, i.costo from VentaItem i join i.venta v join i.producto p where v.estado = com.vivanet.beautystock.entity.EstadoVenta.ACTIVA and v.fechaHora >= :desde and v.fechaHora < :hasta order by v.id, i.id")
+    List<Object[]> lineasEntre(LocalDateTime desde, LocalDateTime hasta);
 }

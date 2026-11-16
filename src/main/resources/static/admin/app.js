@@ -198,7 +198,7 @@ new MutationObserver(etiquetarTablas).observe(document.body, { childList: true, 
 // ---------- Navegacion ----------
 
 const vistas = {
-  panel, ventas, 'nueva-venta': nuevaVenta, pedidos, inventario, compras, clientes, configuracion,
+  panel, ventas, 'nueva-venta': nuevaVenta, pedidos, inventario, compras, clientes, reportes, configuracion,
   productos: inventario, // la antigua seccion "Productos" ahora es parte de Inventario
 };
 /** Opcion del menu que se marca para cada vista. */
@@ -1525,6 +1525,230 @@ function cambiarEstadoPedido(p, estado, recargar) {
         <div class="modal-pie"><button data-cerrar>Ahora no</button><a class="boton primario" target="_blank" rel="noopener" href="https://wa.me/${telWa(p.telefono)}?text=${encodeURIComponent(texto)}">Enviar confirmación por WhatsApp</a></div>`);
     }
   });
+}
+
+// =====================================================================
+// REPORTES (ventas, utilidad y compras por periodo; rankings; Excel, PDF y WhatsApp)
+// =====================================================================
+
+/** Fecha local a texto AAAA-MM-DD (sin pasar por UTC, que cambiaria el dia de noche). */
+const isoLocal = (d) => d.toLocaleDateString('en-CA');
+/** Texto AAAA-MM-DD a fecha local. */
+const fechaLocal = (iso) => { const [a, m, d] = iso.split('-').map(Number); return new Date(a, m - 1, d); };
+const sumarDias = (iso, dias) => { const d = fechaLocal(iso); d.setDate(d.getDate() + dias); return isoLocal(d); };
+const sumarAnios = (iso, anios) => { const d = fechaLocal(iso); d.setFullYear(d.getFullYear() + anios); return isoLocal(d); };
+const diasEntre = (a, b) => Math.round((fechaLocal(b) - fechaLocal(a)) / 86400000) + 1;
+const fechaTexto = (iso, conAnio = true) => fechaLocal(iso).toLocaleDateString('es-CO', { day: 'numeric', month: 'short', ...(conAnio ? { year: 'numeric' } : {}) }).replace('.', '');
+const rangoTexto = (desde, hasta) => desde === hasta ? fechaTexto(desde)
+  : fechaTexto(desde, desde.slice(0, 4) !== hasta.slice(0, 4)) + ' – ' + fechaTexto(hasta);
+
+const PERIODOS_REPORTE = {
+  hoy: 'Hoy', semana: 'Esta semana', mes: 'Este mes', 'mes-pasado': 'Mes pasado',
+  '7': 'Últimos 7 días', '30': 'Últimos 30 días', anio: 'Este año', otro: 'Otras fechas',
+};
+
+/** Fechas de cada periodo rapido y su comparacion natural ("este mes" contra los mismos dias del mes anterior). */
+function fechasPeriodo(clave) {
+  const hoy = hoyISO();
+  const d = fechaLocal(hoy);
+  const primeroMes = isoLocal(new Date(d.getFullYear(), d.getMonth(), 1));
+  switch (clave) {
+    case 'hoy': return { desde: hoy, hasta: hoy };
+    case 'semana': return { desde: sumarDias(hoy, -((d.getDay() + 6) % 7)), hasta: hoy };
+    case 'mes': {
+      const ini = new Date(d.getFullYear(), d.getMonth() - 1, 1);
+      const fin = new Date(d.getFullYear(), d.getMonth(), 0); // ultimo dia del mes anterior
+      return { desde: primeroMes, hasta: hoy, compDesde: isoLocal(ini), compHasta: isoLocal(new Date(ini.getFullYear(), ini.getMonth(), Math.min(d.getDate(), fin.getDate()))) };
+    }
+    case 'mes-pasado': {
+      const ini = new Date(d.getFullYear(), d.getMonth() - 1, 1);
+      return { desde: isoLocal(ini), hasta: sumarDias(primeroMes, -1),
+        compDesde: isoLocal(new Date(d.getFullYear(), d.getMonth() - 2, 1)), compHasta: isoLocal(new Date(d.getFullYear(), d.getMonth() - 1, 0)) };
+    }
+    case '7': return { desde: sumarDias(hoy, -6), hasta: hoy };
+    case '30': return { desde: sumarDias(hoy, -29), hasta: hoy };
+    case 'anio': return { desde: `${d.getFullYear()}-01-01`, hasta: hoy, compDesde: `${d.getFullYear() - 1}-01-01`, compHasta: sumarAnios(hoy, -1) };
+    default: return null;
+  }
+}
+
+/** Agrupacion que se lee bien segun la cantidad de dias. */
+const agruparSugerido = (desde, hasta) => { const n = diasEntre(desde, hasta); return n <= 31 ? 'DIA' : n <= 120 ? 'SEMANA' : 'MES'; };
+
+/** Variacion entre dos valores, como texto con flecha y color. */
+function variacion(actual, anterior) {
+  if (!anterior) return actual ? { texto: 'nuevo', clase: 'sube', pct: null } : { texto: 'sin cambio', clase: '', pct: 0 };
+  const pct = Math.round((actual - anterior) * 100 / Math.abs(anterior));
+  return { texto: (pct > 0 ? '▲ ' : pct < 0 ? '▼ ' : '') + Math.abs(pct) + ' %', clase: pct > 0 ? 'sube' : pct < 0 ? 'baja' : '', pct };
+}
+
+/** Parametros del reporte para la API, el Excel y la pagina para PDF. */
+const paramsReporte = (f) => new URLSearchParams(Object.entries(f).filter(([, v]) => v));
+
+async function reportes() {
+  const guardado = (() => { try { return JSON.parse(sessionStorage.getItem('reporte') || 'null'); } catch { return null; } })();
+  let filtro = guardado || { periodo: 'mes', ...fechasPeriodo('mes'), agrupar: 'DIA', comparar: 'anterior' };
+
+  vista().innerHTML = `
+    <header class="cabecera">
+      <div><h1>Reportes</h1><p class="sub">Ventas, utilidad y compras · comparación y productos</p></div>
+      <div class="acciones">
+        <button type="button" id="rep-excel">Excel</button>
+        <button type="button" id="rep-pdf">PDF</button>
+        <button type="button" id="rep-wa">${icono('whatsapp', 18)}WhatsApp</button>
+      </div>
+    </header>
+    <div class="barra">
+      <label>Periodo <select id="rep-periodo">${Object.entries(PERIODOS_REPORTE).map(([v, t]) => `<option value="${v}">${t}</option>`).join('')}</select></label>
+      <label>Desde <input type="date" id="rep-desde"></label>
+      <label>Hasta <input type="date" id="rep-hasta"></label>
+      <label>Ver por <select id="rep-agrupar"><option value="DIA">Día</option><option value="SEMANA">Semana</option><option value="MES">Mes</option></select></label>
+      <label>Comparar con <select id="rep-comparar"><option value="anterior">Periodo anterior</option><option value="anio">Mismo periodo del año pasado</option></select></label>
+    </div>
+    <div id="rep-contenido" style="display:flex;flex-direction:column;gap:20px"><p class="suave">Cargando…</p></div>`;
+
+  const poner = () => {
+    $('#rep-periodo').value = filtro.periodo;
+    $('#rep-desde').value = filtro.desde;
+    $('#rep-hasta').value = filtro.hasta;
+    $('#rep-agrupar').value = filtro.agrupar;
+    $('#rep-comparar').value = filtro.comparar;
+  };
+  /** Lo que se envia al servidor: fechas, agrupacion y, si aplica, con que fechas comparar. */
+  const consulta = () => {
+    const { desde, hasta, agrupar } = filtro;
+    let compDesde = filtro.compDesde;
+    let compHasta = filtro.compHasta;
+    if (filtro.comparar === 'anio') { compDesde = sumarAnios(desde, -1); compHasta = sumarAnios(hasta, -1); }
+    return { desde, hasta, agrupar, compDesde, compHasta };
+  };
+
+  let datos = null;
+  const cargar = () => intentar(async () => {
+    try { sessionStorage.setItem('reporte', JSON.stringify(filtro)); } catch { /* sin almacenamiento: no pasa nada */ }
+    const generacion = generacionVista;
+    const r = await api('/api/reportes?' + paramsReporte(consulta()));
+    if (generacion !== generacionVista) return; // el usuario ya se fue a otra vista
+    datos = r;
+    dibujarReporte(r, filtro.comparar === 'anio' ? 'el mismo periodo del año pasado' : 'el periodo anterior');
+  });
+
+  poner();
+  $('#rep-periodo').addEventListener('change', () => {
+    const fechas = fechasPeriodo($('#rep-periodo').value);
+    filtro = { ...filtro, periodo: $('#rep-periodo').value, compDesde: null, compHasta: null };
+    if (fechas) { Object.assign(filtro, fechas); filtro.agrupar = agruparSugerido(filtro.desde, filtro.hasta); }
+    poner();
+    cargar();
+  });
+  ['rep-desde', 'rep-hasta'].forEach((id) => $('#' + id).addEventListener('change', () => {
+    const desde = $('#rep-desde').value;
+    const hasta = $('#rep-hasta').value;
+    if (!desde || !hasta) return;
+    filtro = { ...filtro, periodo: 'otro', desde, hasta, compDesde: null, compHasta: null, agrupar: agruparSugerido(desde, hasta) };
+    poner();
+    cargar();
+  }));
+  $('#rep-agrupar').addEventListener('change', () => { filtro.agrupar = $('#rep-agrupar').value; cargar(); });
+  $('#rep-comparar').addEventListener('change', () => { filtro.comparar = $('#rep-comparar').value; cargar(); });
+
+  $('#rep-excel').addEventListener('click', () => intentar(async () => {
+    const respuesta = await fetch('/api/reportes/excel?' + paramsReporte(consulta()));
+    if (!respuesta.ok) throw new Error((await respuesta.json().catch(() => ({}))).mensaje || 'No se pudo generar el Excel.');
+    const enlace = document.createElement('a');
+    enlace.href = URL.createObjectURL(await respuesta.blob());
+    enlace.download = `reporte-vivanta-${filtro.desde}-al-${filtro.hasta}.xlsx`;
+    enlace.click();
+    setTimeout(() => URL.revokeObjectURL(enlace.href), 10000);
+  }));
+  $('#rep-pdf').addEventListener('click', () => window.open('/admin/reporte.html?' + paramsReporte(consulta()), '_blank'));
+  $('#rep-wa').addEventListener('click', () => {
+    if (!datos) return;
+    window.open('https://wa.me/?text=' + encodeURIComponent(textoWhatsappReporte(datos)), '_blank');
+  });
+
+  await cargar();
+}
+
+/** Productos ordenados para cada ranking (solo los 10 primeros). */
+function rankings(productos) {
+  const conMargen = productos.map((p) => ({ ...p, margen: p.ventas ? Math.round(p.utilidad * 100 / p.ventas) : 0 }));
+  return {
+    vendidos: [...conMargen].sort((a, b) => b.unidades - a.unidades || b.ventas - a.ventas).slice(0, 10),
+    rentables: [...conMargen].sort((a, b) => b.utilidad - a.utilidad).slice(0, 10),
+    menos: [...conMargen].sort((a, b) => a.utilidad - b.utilidad).slice(0, 10),
+  };
+}
+
+function dibujarReporte(r, textoComparacion) {
+  const a = r.resumen;
+  const b = r.comparacion;
+  const margen = a.ventas ? Math.round(a.utilidad * 100 / (a.ventas - a.domicilios || 1)) : 0;
+  const tarjeta = (titulo, actual, anterior, detalle, tono = '', esDinero = true) => {
+    const v = variacion(actual, anterior);
+    return `<div class="indicador ${tono}"><span class="titulo">${titulo}</span>
+      <span class="valor">${esDinero ? cop(actual) : actual.toLocaleString('es-CO')}</span>
+      <span class="detalle">${detalle}</span>
+      <span class="detalle comparacion ${v.clase}"><strong>${v.texto}</strong> frente a ${esDinero ? cop(anterior) : anterior.toLocaleString('es-CO')}</span></div>`;
+  };
+  const maximo = Math.max(1, ...r.periodos.map((p) => p.ventas));
+  const { vendidos, rentables, menos } = rankings(r.productos);
+  const tablaRanking = (lista, columna) => lista.length ? `<div class="tabla-contenedor"><table>
+      <thead><tr><th>#</th><th>Producto</th><th class="num">Unidades</th><th class="num">Ventas</th><th class="num">Utilidad</th><th class="num">Margen</th></tr></thead>
+      <tbody>${lista.map((p, i) => `<tr><td>${i + 1}</td><td><strong>${esc(p.nombre)}</strong>${p.marca ? `<br><span class="suave">${esc(p.marca)}</span>` : ''}</td>
+        <td class="num ${columna === 'unidades' ? 'destacado' : ''}">${p.unidades}</td><td class="num">${cop(p.ventas)}</td>
+        <td class="num ${columna === 'utilidad' ? 'destacado' : ''} ${p.utilidad < 0 ? 'peligro' : ''}">${cop(p.utilidad)}</td><td class="num">${p.margen} %</td></tr>`).join('')}</tbody></table></div>`
+    : '<p class="suave">No hubo ventas en estas fechas.</p>';
+
+  $('#rep-contenido').innerHTML = `
+    <p class="suave" style="margin:0">Del <strong>${rangoTexto(r.desde, r.hasta)}</strong> comparado con ${textoComparacion} (${rangoTexto(r.compDesde, r.compHasta)}).</p>
+    <section class="indicadores" aria-label="Resumen del periodo">
+      ${tarjeta('Ventas', a.ventas, b.ventas, `${a.numeroVentas} venta(s) · ${a.unidades} unidad(es)`, 'rosa')}
+      ${tarjeta('Utilidad estimada', a.utilidad, b.utilidad, `Margen ${margen} % · costo PEPS`, 'amarillo')}
+      ${tarjeta('Compras de mercancía', a.compras, b.compras, `${a.numeroCompras} compra(s)${a.costosAdicionales ? ' · + ' + cop(a.costosAdicionales) + ' en costos adicionales' : ''}`)}
+      ${tarjeta('Número de ventas', a.numeroVentas, b.numeroVentas, `Promedio por venta ${cop(a.numeroVentas ? a.ventas / a.numeroVentas : 0)}`, '', false)}
+    </section>
+    ${a.descuentos || a.domicilios ? `<p class="suave" style="margin:-8px 0 0;font-size:13px">Descuentos dados: ${cop(a.descuentos)} · Domicilios cobrados: ${cop(a.domicilios)} (incluidos en ventas, no en la utilidad)</p>` : ''}
+    <section class="tarjeta">
+      <h2>${{ DIA: 'Día por día', SEMANA: 'Semana por semana', MES: 'Mes por mes' }[r.agrupar]}</h2>
+      <div class="tabla-contenedor"><table class="tabla-periodos">
+        <thead><tr><th>Periodo</th><th class="num">Ventas</th><th class="num">Utilidad</th><th class="num">N.º ventas</th><th class="num">Compras</th></tr></thead>
+        <tbody>${r.periodos.map((p) => `<tr class="${p.numeroVentas || p.compras ? '' : 'inactivo'}">
+          <td>${esc(p.etiqueta)}<div class="barra-dato" aria-hidden="true"><div style="width:${Math.round(p.ventas * 100 / maximo)}%"></div></div></td>
+          <td class="num">${cop(p.ventas)}</td><td class="num">${cop(p.utilidad)}</td><td class="num">${p.numeroVentas}</td><td class="num">${cop(p.compras)}</td></tr>`).join('')}</tbody>
+        <tfoot><tr><th>Total</th><th class="num">${cop(a.ventas)}</th><th class="num">${cop(a.utilidad)}</th><th class="num">${a.numeroVentas}</th><th class="num">${cop(a.compras)}</th></tr></tfoot>
+      </table></div>
+    </section>
+    <section class="tarjeta">
+      <h2>Productos</h2>
+      <fieldset class="opciones parejo" style="margin-bottom:14px" aria-label="Ranking de productos">
+        ${pastillas('ranking', [['vendidos', 'Más vendidos'], ['rentables', 'Más rentables'], ['menos', 'Menos rentables']], 'vendidos')}</fieldset>
+      <div id="rep-ranking"></div>
+      <p class="suave" style="margin:12px 0 0;font-size:13px">${r.productos.length} producto(s) vendidos en estas fechas. La lista completa está en el Excel.</p>
+    </section>`;
+  const tablas = { vendidos: tablaRanking(vendidos, 'unidades'), rentables: tablaRanking(rentables, 'utilidad'), menos: tablaRanking(menos, 'utilidad') };
+  const mostrar = () => { $('#rep-ranking').innerHTML = tablas[$('input[name="ranking"]:checked').value]; };
+  $$('input[name="ranking"]').forEach((radio) => radio.addEventListener('change', mostrar));
+  mostrar();
+}
+
+/** Resumen corto para enviar por WhatsApp (el usuario elige a quien). */
+function textoWhatsappReporte(r) {
+  const a = r.resumen;
+  const b = r.comparacion;
+  const v = (x, y) => { const c = variacion(x, y); return c.pct === null ? 'nuevo' : c.texto.replace('▲', '↑').replace('▼', '↓'); };
+  const { vendidos } = rankings(r.productos);
+  return [
+    `*Reporte ${negocio.nombreNegocio}*`,
+    rangoTexto(r.desde, r.hasta),
+    '',
+    `Ventas: ${cop(a.ventas)} (${a.numeroVentas} venta(s))`,
+    `Utilidad estimada: ${cop(a.utilidad)}`,
+    `Compras: ${cop(a.compras)}`,
+    '',
+    `Frente a ${rangoTexto(r.compDesde, r.compHasta)}: ventas ${v(a.ventas, b.ventas)}, utilidad ${v(a.utilidad, b.utilidad)}`,
+    ...(vendidos.length ? ['', '*Más vendidos*', ...vendidos.slice(0, 5).map((p, i) => `${i + 1}. ${p.nombre} (${p.unidades} und.)`)] : []),
+  ].join('\n');
 }
 
 // =====================================================================
