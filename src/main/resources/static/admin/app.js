@@ -278,6 +278,35 @@ document.addEventListener('visibilitychange', () => {
 });
 
 // Tema claro / oscuro (se recuerda en este navegador).
+/** Cambiar la contrasena del administrador (boton al pie del menu). */
+function formularioClave() {
+  $('#app').classList.remove('menu-abierto');
+  const m = abrirModal('Cambiar contraseña', `
+    <form id="form-clave" class="campos">
+      <label class="ancho">Contraseña actual * <input name="actual" type="password" required autocomplete="current-password"></label>
+      <label class="ancho">Contraseña nueva * <input name="nueva" type="password" required minlength="8" maxlength="72" autocomplete="new-password"></label>
+      <label class="ancho">Repite la contraseña nueva * <input name="confirmacion" type="password" required minlength="8" maxlength="72" autocomplete="new-password"></label>
+      <label class="check ancho"><input type="checkbox" id="ver-claves"> Mostrar contraseñas</label>
+      <p class="ancho suave" style="margin:0;font-size:13px">Mínimo 8 caracteres. Mejor una frase fácil de recordar para ti y difícil de adivinar para otros, por ejemplo tres palabras con un número.
+        Al cambiarla se cierra la sesión en tus otros dispositivos (aquí sigues dentro).</p>
+    </form>
+    <div class="modal-pie"><button data-cerrar>Cancelar</button><button class="primario" form="form-clave">Cambiar contraseña</button></div>`);
+  $('#ver-claves', m).addEventListener('change', (e) => {
+    $$('input[type="password"], input[data-clave]', m).forEach((i) => { i.dataset.clave = '1'; i.type = e.target.checked ? 'text' : 'password'; });
+  });
+  $('#form-clave', m).addEventListener('submit', (e) => {
+    e.preventDefault();
+    const f = e.target;
+    if (f.nueva.value !== f.confirmacion.value) { avisar('La confirmación no coincide con la contraseña nueva.', 'error'); return; }
+    intentar(async () => {
+      const r = await api('/api/sesion/clave', { metodo: 'POST', datos: { actual: f.actual.value, nueva: f.nueva.value, confirmacion: f.confirmacion.value } });
+      cerrarModal();
+      avisar('Contraseña cambiada' + (r.sesionesCerradas ? ' · se cerró la sesión en ' + r.sesionesCerradas + ' otro(s) dispositivo(s)' : ''));
+    });
+  });
+}
+$('#cambiar-clave').addEventListener('click', formularioClave);
+
 function aplicarTema(tema) {
   if (tema) document.documentElement.dataset.theme = tema;
 }

@@ -15,14 +15,17 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 
+import com.vivanet.beautystock.dto.Dtos.CambiarClaveRequest;
 import com.vivanet.beautystock.dto.Dtos.ConfiguracionDto;
 import com.vivanet.beautystock.dto.Dtos.PanelDto;
 import com.vivanet.beautystock.entity.Configuracion;
+import com.vivanet.beautystock.service.AdministradorService;
 import com.vivanet.beautystock.service.ConfiguracionService;
 import com.vivanet.beautystock.service.ConsecutivoService;
 import com.vivanet.beautystock.service.NegocioException;
 import com.vivanet.beautystock.service.PanelService;
 
+import jakarta.servlet.http.HttpSession;
 import jakarta.validation.Valid;
 
 @RestController
@@ -31,9 +34,11 @@ public class ConfiguracionController {
     private final ConfiguracionService servicio;
     private final PanelService panel;
     private final ConsecutivoService consecutivos;
+    private final AdministradorService administrador;
 
     public ConfiguracionController(ConfiguracionService servicio, PanelService panel,
-            ConsecutivoService consecutivos) {
+            ConsecutivoService consecutivos, AdministradorService administrador) {
+        this.administrador = administrador;
         this.servicio = servicio;
         this.panel = panel;
         this.consecutivos = consecutivos;
@@ -42,6 +47,14 @@ public class ConfiguracionController {
     @GetMapping("/api/sesion")
     public Map<String, String> sesion(Principal usuario) {
         return Map.of("usuario", usuario.getName());
+    }
+
+    /** Cambia la contrasena del administrador y cierra sus sesiones en otros dispositivos. */
+    @PostMapping("/api/sesion/clave")
+    public Map<String, Object> cambiarClave(Principal usuario, @RequestBody CambiarClaveRequest datos, HttpSession sesion) {
+        int cerradas = administrador.cambiarClave(usuario.getName(), datos.actual(), datos.nueva(), datos.confirmacion(),
+                sesion.getId());
+        return Map.of("sesionesCerradas", cerradas);
     }
 
     /** Proximo numero de venta (V) o compra (C), para mostrarlo en el encabezado del formulario. */

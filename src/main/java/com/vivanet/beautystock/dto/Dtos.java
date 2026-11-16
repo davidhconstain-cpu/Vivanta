@@ -259,6 +259,11 @@ public final class Dtos {
             long metaVentasMes, long metaUtilidadMes, long clientesConSaldo) {
     }
 
+    // ---------- Cuenta del administrador ----------
+
+    public record CambiarClaveRequest(String actual, String nueva, String confirmacion) {
+    }
+
     // ---------- Gastos y retiros ----------
 
     public record GastoRequest(@NotNull(message = "es obligatoria") LocalDate fecha, @NotBlank(message = "es obligatorio") String concepto, @Min(value = 1, message = "debe ser mayor que cero") long valor,

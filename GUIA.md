@@ -49,12 +49,13 @@ El recorrido de una petición es siempre: **navegador → controlador (web) → 
 | Panel y alertas (stock bajo, vencimientos a 3 días) | `service/PanelService.java` |
 | Reportes: ventas, utilidad y compras por día/semana/mes, comparación, rankings | `service/ReporteService.java` |
 | Exportar a Excel (.xlsx armado sin librerías) | `service/Excel.java` |
+| Usuario y contraseña (cifrada con BCrypt; cambiarla cierra las otras sesiones; ADMIN_PASSWORD = llave de emergencia) | `service/AdministradorService.java` |
 | Gastos, retiros y gastos que se repiten (pendiente 3 días antes, sin tareas programadas) | `service/GastoService.java` |
 
 ## Pendiente (siguientes bloques del DDI)
 
 - Corrección de una venta ya registrada (hoy se puede anular y volver a registrar).
-- Recuperación de contraseña por correo, lista de sesiones activas.
+- Recuperación de contraseña por correo (hoy: cambiar ADMIN_PASSWORD en Render), lista de sesiones activas.
 - Alertas y resúmenes automáticos por WhatsApp (hoy se usan enlaces wa.me).
 - Analítica del catálogo, carritos abandonados, operación sin conexión.
 - Copias de seguridad automáticas (cada 6 horas, 90 días) y descarga desde la app.
