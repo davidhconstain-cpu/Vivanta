@@ -13,6 +13,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.vivanet.beautystock.dto.Dtos.AlertaDto;
 import com.vivanet.beautystock.dto.Dtos.CatalogoDto;
+import com.vivanet.beautystock.dto.Dtos.GastoDto;
 import com.vivanet.beautystock.dto.Dtos.PanelDto;
 import com.vivanet.beautystock.dto.Dtos.ProductoCatalogoDto;
 import com.vivanet.beautystock.dto.Dtos.ProductoDelSetDto;
@@ -39,11 +40,13 @@ public class PanelService {
     private final ConfiguracionService configuracion;
 
     private final ContenidoCatalogoService contenido;
+    private final GastoService gastos;
 
     public PanelService(VentaRepository ventas, CompraRepository compras, PedidoRepository pedidos,
             InventarioService inventario, ProductoService productos, ConfiguracionService configuracion,
-            ContenidoCatalogoService contenido) {
+            ContenidoCatalogoService contenido, GastoService gastos) {
         this.contenido = contenido;
+        this.gastos = gastos;
         this.ventas = ventas;
         this.compras = compras;
         this.pedidos = pedidos;
@@ -58,6 +61,10 @@ public class PanelService {
         List<Venta> deHoy = activas(ventas.entreFechas(hoy.atStartOfDay(), hoy.plusDays(1).atStartOfDay()));
         List<Venta> delMes = activas(ventas.entreFechas(hoy.withDayOfMonth(1).atStartOfDay(),
                 hoy.plusDays(1).atStartOfDay()));
+
+        // Los gastos recurrentes que ya toca pagar aparecen como pendientes (y como alerta).
+        gastos.generarPendientes();
+        List<GastoDto> gastosPendientes = gastos.pendientes();
 
         List<Venta> porCobrar = ventas.pendientesDeCobro();
         List<Compra> porPagar = compras.pendientesDePago();
@@ -99,6 +106,10 @@ public class PanelService {
             agregarVencimiento(alertas, c.getFechaVencimiento(), hoy, "Pago a proveedor " + c.getNumero(),
                     "Saldo " + Pesos.formato(c.getSaldo()) + (c.getProveedor() != null ? " · " + c.getProveedor() : ""),
                     "compras");
+        }
+        for (GastoDto g : gastosPendientes) {
+            agregarVencimiento(alertas, g.fecha(), hoy, "Gasto: " + g.concepto(),
+                    Pesos.formato(g.valor()) + " · márcalo como pagado", "gastos");
         }
         long pendientes = pedidos.countByEstado(EstadoPedido.PENDIENTE);
         if (pendientes > 0) {

@@ -43,10 +43,12 @@
     const esc = (t) => String(t ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
     const fecha = (iso) => { const [a, m, d] = iso.split('-').map(Number); return new Date(a, m - 1, d).toLocaleDateString('es-CO', { day: 'numeric', month: 'long', year: 'numeric' }); };
     const rango = (d, h) => d === h ? fecha(d) : fecha(d) + ' al ' + fecha(h);
-    const cambio = (x, y) => {
-      if (!y) return x ? '<span class="sube">nuevo</span>' : 'sin cambio';
+    /** menosEsMejor: en los gastos, subir es malo (rojo) y bajar es bueno (verde). */
+    const cambio = (x, y, menosEsMejor = false) => {
+      const color = (d) => (menosEsMejor ? -d : d) > 0 ? 'sube' : (menosEsMejor ? -d : d) < 0 ? 'baja' : '';
+      if (!y) return x ? `<span class="${color(x)}">nuevo</span>` : 'sin cambio';
       const p = Math.round((x - y) * 100 / Math.abs(y));
-      return `<span class="${p > 0 ? 'sube' : p < 0 ? 'baja' : ''}">${p > 0 ? '▲' : p < 0 ? '▼' : ''} ${Math.abs(p)} %</span>`;
+      return `<span class="${color(p)}">${p > 0 ? '▲' : p < 0 ? '▼' : ''} ${Math.abs(p)} %</span>`;
     };
     (async () => {
       const [rr, cr] = await Promise.all([fetch('/api/reportes' + location.search), fetch('/api/configuracion')]);
@@ -56,7 +58,7 @@
       const a = r.resumen;
       const b = r.comparacion;
       document.title = 'Reporte ' + r.desde + ' al ' + r.hasta;
-      const caja = (titulo, x, y, dinero = true) => `<div><span>${titulo}</span><strong>${dinero ? cop(x) : x}</strong><span>${cambio(x, y)} frente a ${dinero ? cop(y) : y}</span></div>`;
+      const caja = (titulo, x, y, dinero = true, menosEsMejor = false) => `<div><span>${titulo}</span><strong>${dinero ? cop(x) : x}</strong><span>${cambio(x, y, menosEsMejor)} frente a ${dinero ? cop(y) : y}</span></div>`;
       const productos = r.productos.map((p) => ({ ...p, margen: p.ventas ? Math.round(p.utilidad * 100 / p.ventas) : 0 }));
       const tabla = (lista) => lista.length ? `<table>
           <thead><tr><th>#</th><th>Producto</th><th class="num">Und.</th><th class="num">Ventas</th><th class="num">Utilidad</th><th class="num">Margen</th></tr></thead>
@@ -74,15 +76,17 @@
         <div class="resumen">
           ${caja('Ventas', a.ventas, b.ventas)}
           ${caja('Utilidad estimada', a.utilidad, b.utilidad)}
+          ${caja('Gastos pagados', a.gastos, b.gastos, true, true)}
+          ${caja('Utilidad después de gastos', a.utilidadNeta, b.utilidadNeta)}
           ${caja('Compras de mercancía', a.compras, b.compras)}
           ${caja('Número de ventas', a.numeroVentas, b.numeroVentas, false)}
         </div>
-        <p class="suave" style="font-size:.85rem">Unidades vendidas: ${a.unidades} · Descuentos: ${cop(a.descuentos)} · Domicilios: ${cop(a.domicilios)} · Costos adicionales de compras: ${cop(a.costosAdicionales)}</p>
+        <p class="suave" style="font-size:.85rem">Unidades vendidas: ${a.unidades} · Descuentos: ${cop(a.descuentos)} · Domicilios: ${cop(a.domicilios)} · Costos adicionales de compras: ${cop(a.costosAdicionales)} · Retiros del negocio: ${cop(a.retiros)}</p>
         <h2>${{ DIA: 'Día por día', SEMANA: 'Semana por semana', MES: 'Mes por mes' }[r.agrupar]}</h2>
         <table>
-          <thead><tr><th>Periodo</th><th class="num">Ventas</th><th class="num">Utilidad</th><th class="num">N.º ventas</th><th class="num">Compras</th></tr></thead>
-          <tbody>${r.periodos.map((p) => `<tr><td>${esc(p.etiqueta)}</td><td class="num">${cop(p.ventas)}</td><td class="num">${cop(p.utilidad)}</td><td class="num">${p.numeroVentas}</td><td class="num">${cop(p.compras)}</td></tr>`).join('')}</tbody>
-          <tfoot><tr><th>Total</th><th class="num">${cop(a.ventas)}</th><th class="num">${cop(a.utilidad)}</th><th class="num">${a.numeroVentas}</th><th class="num">${cop(a.compras)}</th></tr></tfoot>
+          <thead><tr><th>Periodo</th><th class="num">Ventas</th><th class="num">Utilidad</th><th class="num">N.º ventas</th><th class="num">Gastos</th><th class="num">Compras</th></tr></thead>
+          <tbody>${r.periodos.map((p) => `<tr><td>${esc(p.etiqueta)}</td><td class="num">${cop(p.ventas)}</td><td class="num">${cop(p.utilidad)}</td><td class="num">${p.numeroVentas}</td><td class="num">${cop(p.gastos)}</td><td class="num">${cop(p.compras)}</td></tr>`).join('')}</tbody>
+          <tfoot><tr><th>Total</th><th class="num">${cop(a.ventas)}</th><th class="num">${cop(a.utilidad)}</th><th class="num">${a.numeroVentas}</th><th class="num">${cop(a.gastos)}</th><th class="num">${cop(a.compras)}</th></tr></tfoot>
         </table>
         <h2>Más vendidos</h2>
         ${tabla([...productos].sort((x, y) => y.unidades - x.unidades || y.ventas - x.ventas).slice(0, 10))}
@@ -90,7 +94,7 @@
         ${tabla([...productos].sort((x, y) => y.utilidad - x.utilidad).slice(0, 10))}
         <h2>Menos rentables</h2>
         ${tabla([...productos].sort((x, y) => x.utilidad - y.utilidad).slice(0, 10))}
-        <div class="nota">Utilidad estimada con el costo real de los lotes vendidos (PEPS), sin restar gastos del negocio. Las ventas incluyen el domicilio cobrado; la utilidad no. No se cuentan las ventas ni las compras anuladas. Generado el ${new Date().toLocaleString('es-CO')}</div>`;
+        <div class="nota">Utilidad estimada con el costo real de los lotes vendidos (PEPS), antes de gastos. Utilidad después de gastos = utilidad − gastos pagados − costos adicionales de compras; los retiros no son gastos. Las ventas incluyen el domicilio cobrado; la utilidad no. No se cuentan las ventas ni las compras anuladas. Generado el ${new Date().toLocaleString('es-CO')}</div>`;
     })();
   </script>
 </body>

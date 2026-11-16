@@ -198,7 +198,7 @@ new MutationObserver(etiquetarTablas).observe(document.body, { childList: true, 
 // ---------- Navegacion ----------
 
 const vistas = {
-  panel, ventas, 'nueva-venta': nuevaVenta, pedidos, inventario, compras, clientes, reportes, configuracion,
+  panel, ventas, 'nueva-venta': nuevaVenta, pedidos, inventario, compras, clientes, gastos, reportes, configuracion,
   productos: inventario, // la antigua seccion "Productos" ahora es parte de Inventario
 };
 /** Opcion del menu que se marca para cada vista. */
@@ -1528,6 +1528,200 @@ function cambiarEstadoPedido(p, estado, recargar) {
 }
 
 // =====================================================================
+// GASTOS Y RETIROS (gastos generales, retiros del negocio y gastos que se repiten)
+// =====================================================================
+
+const FRECUENCIAS = { SEMANAL: 'Semanal', QUINCENAL: 'Quincenal (cada 15 días)', MENSUAL: 'Mensual', TRIMESTRAL: 'Trimestral', ANUAL: 'Anual' };
+const metodoTexto = (m) => METODOS[m] || '—';
+
+async function gastos() {
+  let mes = hoyISO().slice(0, 7);
+  try { mes = sessionStorage.getItem('gastos-mes') || mes; } catch { /* sin almacenamiento */ }
+
+  vista().innerHTML = `
+    <header class="cabecera">
+      <div><h1>Gastos y retiros</h1><p class="sub">Gastos del negocio, retiros y pagos que se repiten</p></div>
+      <div class="acciones">
+        <button type="button" id="btn-retiro">${icono('mas', 18)}Retiro</button>
+        <button type="button" class="primario" id="btn-gasto">${icono('mas', 18)}Gasto</button>
+      </div>
+    </header>
+    <div class="barra"><label>Mes <input type="month" id="gastos-mes" value="${mes}"></label></div>
+    <div id="gastos-contenido" style="display:flex;flex-direction:column;gap:20px"><p class="suave">Cargando…</p></div>`;
+
+  const cargar = () => intentar(async () => {
+    mes = $('#gastos-mes').value || hoyISO().slice(0, 7);
+    try { sessionStorage.setItem('gastos-mes', mes); } catch { /* sin almacenamiento */ }
+    const [a, m] = mes.split('-').map(Number);
+    const desde = `${mes}-01`;
+    const hasta = isoLocal(new Date(a, m, 0)); // ultimo dia del mes
+    const generacion = generacionVista;
+    const d = await api(`/api/gastos?desde=${desde}&hasta=${hasta}`);
+    if (generacion !== generacionVista) return;
+    const nombreMes = fechaLocal(desde).toLocaleDateString('es-CO', { month: 'long', year: 'numeric' });
+    const acciones = (tipo, id) => `<td class="fila"><button class="pequeno" data-editar-${tipo}="${id}">Editar</button> <button class="pequeno peligro" data-borrar-${tipo}="${id}">Eliminar</button></td>`;
+
+    $('#gastos-contenido').innerHTML = `
+      <section class="indicadores" aria-label="Resumen del mes">
+        <div class="indicador rosa"><span class="titulo">Gastos pagados en ${nombreMes}</span><span class="valor">${cop(d.totalGastos)}</span><span class="detalle">${d.gastos.length} gasto(s)</span></div>
+        <div class="indicador"><span class="titulo">Retiros en ${nombreMes}</span><span class="valor">${cop(d.totalRetiros)}</span><span class="detalle">Plata sacada para uso personal (no es gasto)</span></div>
+        <div class="indicador ${d.pendientes.length ? 'amarillo' : ''}"><span class="titulo">Pendientes por pagar</span><span class="valor">${cop(d.totalPendiente)}</span><span class="detalle">${d.pendientes.length} gasto(s), de cualquier mes</span></div>
+      </section>
+      ${d.pendientes.length ? `<section class="tarjeta">
+        <h2>Pendientes de pago</h2>
+        <div class="tabla-contenedor"><table>
+          <thead><tr><th>Concepto</th><th>Vence</th><th class="num">Valor</th><th></th></tr></thead>
+          <tbody>${d.pendientes.map((g) => `<tr><td><strong>${esc(g.concepto)}</strong>${g.recurrenteId ? ' <span class="etiqueta neutra">Se repite</span>' : ''}</td>
+            <td>${etiquetaVencimiento(g.fecha, g.valor)}</td><td class="num">${cop(g.valor)}</td>
+            <td class="fila"><button class="pequeno primario" data-pagar="${g.id}">Pagar</button> <button class="pequeno" data-editar-gasto="${g.id}">Editar</button> <button class="pequeno peligro" data-borrar-gasto="${g.id}">Eliminar</button></td></tr>`).join('')}</tbody>
+        </table></div>
+      </section>` : ''}
+      <section class="tarjeta">
+        <h2>Gastos pagados en ${nombreMes}</h2>
+        ${d.gastos.length ? `<div class="tabla-contenedor"><table>
+          <thead><tr><th>Fecha de pago</th><th>Concepto</th><th>Método</th><th class="num">Valor</th><th></th></tr></thead>
+          <tbody>${d.gastos.map((g) => `<tr><td>${fecha(g.fechaPago + 'T00:00')}</td><td><strong>${esc(g.concepto)}</strong></td><td>${metodoTexto(g.metodo)}</td>
+            <td class="num">${cop(g.valor)}</td>${acciones('gasto', g.id)}</tr>`).join('')}</tbody>
+        </table></div>` : '<p class="suave">No hay gastos pagados en este mes.</p>'}
+      </section>
+      <section class="tarjeta">
+        <h2>Retiros en ${nombreMes}</h2>
+        ${d.retiros.length ? `<div class="tabla-contenedor"><table>
+          <thead><tr><th>Fecha</th><th>Motivo</th><th>Método</th><th class="num">Valor</th><th></th></tr></thead>
+          <tbody>${d.retiros.map((r) => `<tr><td>${fecha(r.fecha + 'T00:00')}</td><td><strong>${esc(r.motivo)}</strong></td><td>${metodoTexto(r.metodo)}</td>
+            <td class="num">${cop(r.valor)}</td>${acciones('retiro', r.id)}</tr>`).join('')}</tbody>
+        </table></div>` : '<p class="suave">No hay retiros en este mes.</p>'}
+      </section>
+      <section class="tarjeta">
+        <div class="encabezado-seccion" style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:12px">
+          <h2 style="margin:0">Gastos que se repiten</h2>
+          <button type="button" class="pequeno" id="btn-recurrente">${icono('mas', 16)}Gasto que se repite</button>
+        </div>
+        <p class="suave" style="margin-top:0;font-size:13px">Arriendo, internet, plan del celular… Tres días antes de cada fecha aparece como pendiente y como alerta en el panel.</p>
+        ${d.recurrentes.length ? `<div class="tabla-contenedor"><table>
+          <thead><tr><th>Concepto</th><th>Frecuencia</th><th class="num">Valor</th><th>Próxima fecha</th><th>Estado</th><th></th></tr></thead>
+          <tbody>${d.recurrentes.map((r) => `<tr class="${r.activo ? '' : 'inactivo'}"><td><strong>${esc(r.concepto)}</strong></td><td>${FRECUENCIAS[r.frecuencia]}</td>
+            <td class="num">${cop(r.valor)}</td><td>${r.activo ? fecha(r.proximaFecha + 'T00:00') : '—'}</td>
+            <td>${r.activo ? '<span class="etiqueta ok">Activo</span>' : '<span class="etiqueta neutra">Pausado</span>'}</td>${acciones('recurrente', r.id)}</tr>`).join('')}</tbody>
+        </table></div>` : '<p class="suave">Todavía no hay gastos que se repitan.</p>'}
+      </section>`;
+
+    const todosGastos = [...d.pendientes, ...d.gastos];
+    $$('[data-pagar]').forEach((b) => b.addEventListener('click', () => pagarGasto(todosGastos.find((g) => g.id === Number(b.dataset.pagar)), cargar)));
+    $$('[data-editar-gasto]').forEach((b) => b.addEventListener('click', () => formularioGasto(todosGastos.find((g) => g.id === Number(b.dataset.editarGasto)), cargar)));
+    $$('[data-borrar-gasto]').forEach((b) => b.addEventListener('click', () => {
+      const g = todosGastos.find((x) => x.id === Number(b.dataset.borrarGasto));
+      if (confirm(`¿Eliminar el gasto «${g.concepto}» por ${cop(g.valor)}?`)) borrar('/api/gastos/' + g.id, 'Gasto eliminado', cargar);
+    }));
+    $$('[data-editar-retiro]').forEach((b) => b.addEventListener('click', () => formularioRetiro(d.retiros.find((r) => r.id === Number(b.dataset.editarRetiro)), cargar)));
+    $$('[data-borrar-retiro]').forEach((b) => b.addEventListener('click', () => {
+      const r = d.retiros.find((x) => x.id === Number(b.dataset.borrarRetiro));
+      if (confirm(`¿Eliminar el retiro «${r.motivo}» por ${cop(r.valor)}?`)) borrar('/api/retiros/' + r.id, 'Retiro eliminado', cargar);
+    }));
+    $$('[data-editar-recurrente]').forEach((b) => b.addEventListener('click', () => formularioRecurrente(d.recurrentes.find((r) => r.id === Number(b.dataset.editarRecurrente)), cargar)));
+    $$('[data-borrar-recurrente]').forEach((b) => b.addEventListener('click', () => {
+      const r = d.recurrentes.find((x) => x.id === Number(b.dataset.borrarRecurrente));
+      if (confirm(`¿Dejar de repetir «${r.concepto}»? Los gastos que ya se crearon (pagados o pendientes) se conservan.`)) borrar('/api/gastos-recurrentes/' + r.id, 'Ya no se repite', cargar);
+    }));
+    $('#btn-recurrente').addEventListener('click', () => formularioRecurrente(null, cargar));
+  });
+
+  $('#gastos-mes').addEventListener('change', cargar);
+  $('#btn-gasto').addEventListener('click', () => formularioGasto(null, cargar));
+  $('#btn-retiro').addEventListener('click', () => formularioRetiro(null, cargar));
+  await cargar();
+}
+
+function borrar(url, mensaje, recargar) {
+  intentar(async () => {
+    await api(url, { metodo: 'DELETE' });
+    avisar(mensaje);
+    recargar();
+  });
+}
+
+/** Guarda un formulario de la ventana con POST (nuevo) o PUT (editar). */
+function guardarFormulario(m, idForm, url, editando, mensaje, recargar, preparar = (d) => d) {
+  $('#' + idForm, m).addEventListener('submit', (e) => {
+    e.preventDefault();
+    intentar(async () => {
+      await api(url, { metodo: editando ? 'PUT' : 'POST', datos: preparar(leerFormulario(e.target)) });
+      cerrarModal();
+      avisar(mensaje);
+      recargar();
+    });
+  });
+}
+
+function formularioGasto(g, recargar) {
+  const pagado = g ? g.pagado : true;
+  const m = abrirModal(g ? 'Editar gasto' : 'Nuevo gasto', `
+    <form id="form-gasto" class="campos">
+      <label class="ancho">Concepto * <input name="concepto" required maxlength="200" value="${esc(g?.concepto)}" placeholder="Ej.: Bolsas de empaque, transporte, publicidad"></label>
+      <label>Valor (COP) * <input name="valor" type="number" min="1" step="1" required data-numero value="${g?.valor ?? ''}"></label>
+      <fieldset class="opciones parejo ancho"><legend>Estado</legend>${pastillas('estado', [['PAGADO', 'Ya lo pagué'], ['PENDIENTE', 'Pendiente de pago']], pagado ? 'PAGADO' : 'PENDIENTE')}</fieldset>
+      <label><span id="texto-fecha">${pagado ? 'Fecha *' : 'Vence el *'}</span><input name="fecha" type="date" required value="${g?.fecha || hoyISO()}"></label>
+      <fieldset class="opciones ancho" id="metodo-gasto" ${pagado ? '' : 'hidden'}><legend>Método de pago</legend>${pastillas('metodo', Object.entries(METODOS), g?.metodo || 'EFECTIVO')}</fieldset>
+    </form>
+    <div class="modal-pie"><button data-cerrar>Cancelar</button><button class="primario" form="form-gasto">Guardar</button></div>`);
+  $$('input[name="estado"]', m).forEach((r) => r.addEventListener('change', () => {
+    const esPagado = $('input[name="estado"]:checked', m).value === 'PAGADO';
+    $('#texto-fecha', m).textContent = esPagado ? 'Fecha *' : 'Vence el *';
+    $('#metodo-gasto', m).hidden = !esPagado;
+  }));
+  guardarFormulario(m, 'form-gasto', g ? '/api/gastos/' + g.id : '/api/gastos', !!g, 'Gasto guardado', recargar, (d) => ({
+    fecha: d.fecha, concepto: d.concepto, valor: d.valor, pagado: d.estado === 'PAGADO', metodo: d.estado === 'PAGADO' ? d.metodo : null,
+  }));
+}
+
+function pagarGasto(g, recargar) {
+  const m = abrirModal('Pagar gasto', `
+    <form id="form-pagar" class="campos">
+      <p class="ancho" style="margin:0"><strong>${esc(g.concepto)}</strong> · ${cop(g.valor)}</p>
+      <label>Fecha de pago * <input name="fechaPago" type="date" required value="${hoyISO()}"></label>
+      <fieldset class="opciones ancho"><legend>Método de pago</legend>${pastillas('metodo', Object.entries(METODOS), 'EFECTIVO')}</fieldset>
+    </form>
+    <div class="modal-pie"><button data-cerrar>Cancelar</button><button class="primario" form="form-pagar">Marcar como pagado</button></div>`);
+  $('#form-pagar', m).addEventListener('submit', (e) => {
+    e.preventDefault();
+    intentar(async () => {
+      await api(`/api/gastos/${g.id}/pagar`, { metodo: 'POST', datos: leerFormulario(e.target) });
+      cerrarModal();
+      avisar('Gasto pagado');
+      recargar();
+    });
+  });
+}
+
+function formularioRetiro(r, recargar) {
+  const m = abrirModal(r ? 'Editar retiro' : 'Nuevo retiro', `
+    <form id="form-retiro" class="campos">
+      <p class="ancho suave" style="margin:0;font-size:14px">Plata que sacas del negocio para uso personal. No se resta como gasto: se muestra aparte.</p>
+      <label class="ancho">Motivo * <input name="motivo" required maxlength="200" value="${esc(r?.motivo)}" placeholder="Ej.: Pago personal, mercado"></label>
+      <label>Valor (COP) * <input name="valor" type="number" min="1" step="1" required data-numero value="${r?.valor ?? ''}"></label>
+      <label>Fecha * <input name="fecha" type="date" required value="${r?.fecha || hoyISO()}"></label>
+      <fieldset class="opciones ancho"><legend>Método</legend>${pastillas('metodo', Object.entries(METODOS), r?.metodo || 'EFECTIVO')}</fieldset>
+    </form>
+    <div class="modal-pie"><button data-cerrar>Cancelar</button><button class="primario" form="form-retiro">Guardar</button></div>`);
+  guardarFormulario(m, 'form-retiro', r ? '/api/retiros/' + r.id : '/api/retiros', !!r, 'Retiro guardado', recargar);
+}
+
+function formularioRecurrente(r, recargar) {
+  const m = abrirModal(r ? 'Editar gasto que se repite' : 'Nuevo gasto que se repite', `
+    <form id="form-recurrente" class="campos">
+      <label class="ancho">Concepto * <input name="concepto" required maxlength="200" value="${esc(r?.concepto)}" placeholder="Ej.: Arriendo del local, internet"></label>
+      <label>Valor (COP) * <input name="valor" type="number" min="1" step="1" required data-numero value="${r?.valor ?? ''}"></label>
+      <label>Se repite <select name="frecuencia">${Object.entries(FRECUENCIAS).map(([v, t]) => `<option value="${v}" ${v === (r?.frecuencia || 'MENSUAL') ? 'selected' : ''}>${t}</option>`).join('')}</select></label>
+      <label>Próxima fecha de pago * <input name="proximaFecha" type="date" required min="${hoyISO()}" value="${r && r.proximaFecha >= hoyISO() ? r.proximaFecha : ''}"></label>
+      ${r ? `<label class="check ancho"><input type="checkbox" name="activo" ${r.activo ? 'checked' : ''}> Activo (si lo quitas, se pausa y no crea más pendientes)</label>` : ''}
+      <p class="ancho suave" style="margin:0;font-size:13px">Tres días antes de cada fecha se crea el gasto como pendiente. Al pagarlo, lo marcas con el botón «Pagar».</p>
+    </form>
+    <div class="modal-pie"><button data-cerrar>Cancelar</button><button class="primario" form="form-recurrente">Guardar</button></div>`);
+  guardarFormulario(m, 'form-recurrente', r ? '/api/gastos-recurrentes/' + r.id : '/api/gastos-recurrentes', !!r, 'Gasto que se repite guardado', recargar,
+    (d) => ({ ...d, activo: r ? d.activo : true }));
+}
+
+// =====================================================================
 // REPORTES (ventas, utilidad y compras por periodo; rankings; Excel, PDF y WhatsApp)
 // =====================================================================
 
@@ -1577,7 +1771,7 @@ const agruparSugerido = (desde, hasta) => { const n = diasEntre(desde, hasta); r
 
 /** Variacion entre dos valores, como texto con flecha y color. */
 function variacion(actual, anterior) {
-  if (!anterior) return actual ? { texto: 'nuevo', clase: 'sube', pct: null } : { texto: 'sin cambio', clase: '', pct: 0 };
+  if (!anterior) return actual ? { texto: 'nuevo', clase: actual > 0 ? 'sube' : 'baja', pct: null } : { texto: 'sin cambio', clase: '', pct: 0 };
   const pct = Math.round((actual - anterior) * 100 / Math.abs(anterior));
   return { texto: (pct > 0 ? '▲ ' : pct < 0 ? '▼ ' : '') + Math.abs(pct) + ' %', clase: pct > 0 ? 'sube' : pct < 0 ? 'baja' : '', pct };
 }
@@ -1684,12 +1878,14 @@ function dibujarReporte(r, textoComparacion) {
   const a = r.resumen;
   const b = r.comparacion;
   const margen = a.ventas ? Math.round(a.utilidad * 100 / (a.ventas - a.domicilios || 1)) : 0;
-  const tarjeta = (titulo, actual, anterior, detalle, tono = '', esDinero = true) => {
+  /** menosEsMejor: en los gastos, subir es malo (rojo) y bajar es bueno (verde). */
+  const tarjeta = (titulo, actual, anterior, detalle, tono = '', menosEsMejor = false) => {
     const v = variacion(actual, anterior);
+    const clase = menosEsMejor ? { sube: 'baja', baja: 'sube' }[v.clase] || '' : v.clase;
     return `<div class="indicador ${tono}"><span class="titulo">${titulo}</span>
-      <span class="valor">${esDinero ? cop(actual) : actual.toLocaleString('es-CO')}</span>
+      <span class="valor">${cop(actual)}</span>
       <span class="detalle">${detalle}</span>
-      <span class="detalle comparacion ${v.clase}"><strong>${v.texto}</strong> frente a ${esDinero ? cop(anterior) : anterior.toLocaleString('es-CO')}</span></div>`;
+      <span class="detalle comparacion ${clase}"><strong>${v.texto}</strong> frente a ${cop(anterior)}</span></div>`;
   };
   const maximo = Math.max(1, ...r.periodos.map((p) => p.ventas));
   const { vendidos, rentables, menos } = rankings(r.productos);
@@ -1702,21 +1898,22 @@ function dibujarReporte(r, textoComparacion) {
 
   $('#rep-contenido').innerHTML = `
     <p class="suave" style="margin:0">Del <strong>${rangoTexto(r.desde, r.hasta)}</strong> comparado con ${textoComparacion} (${rangoTexto(r.compDesde, r.compHasta)}).</p>
-    <section class="indicadores" aria-label="Resumen del periodo">
+    <section class="indicadores cinco" aria-label="Resumen del periodo">
       ${tarjeta('Ventas', a.ventas, b.ventas, `${a.numeroVentas} venta(s) · ${a.unidades} unidad(es)`, 'rosa')}
       ${tarjeta('Utilidad estimada', a.utilidad, b.utilidad, `Margen ${margen} % · costo PEPS`, 'amarillo')}
-      ${tarjeta('Compras de mercancía', a.compras, b.compras, `${a.numeroCompras} compra(s)${a.costosAdicionales ? ' · + ' + cop(a.costosAdicionales) + ' en costos adicionales' : ''}`)}
-      ${tarjeta('Número de ventas', a.numeroVentas, b.numeroVentas, `Promedio por venta ${cop(a.numeroVentas ? a.ventas / a.numeroVentas : 0)}`, '', false)}
+      ${tarjeta('Gastos pagados', a.gastos, b.gastos, `${a.costosAdicionales ? 'Más ' + cop(a.costosAdicionales) + ' de costos adicionales de compras' : 'Arriendo, transporte, publicidad…'}`, '', true)}
+      ${tarjeta('Utilidad después de gastos', a.utilidadNeta, b.utilidadNeta, 'Utilidad − gastos − costos adicionales', a.utilidadNeta < 0 ? 'negativo' : '')}
+      ${tarjeta('Compras de mercancía', a.compras, b.compras, `${a.numeroCompras} compra(s)`)}
     </section>
-    ${a.descuentos || a.domicilios ? `<p class="suave" style="margin:-8px 0 0;font-size:13px">Descuentos dados: ${cop(a.descuentos)} · Domicilios cobrados: ${cop(a.domicilios)} (incluidos en ventas, no en la utilidad)</p>` : ''}
+    <p class="suave" style="margin:-8px 0 0;font-size:13px">Retiros del negocio: ${cop(a.retiros)} (aparte, no son gastos)${a.descuentos || a.domicilios ? ` · Descuentos dados: ${cop(a.descuentos)} · Domicilios cobrados: ${cop(a.domicilios)} (incluidos en ventas, no en la utilidad)` : ''}</p>
     <section class="tarjeta">
       <h2>${{ DIA: 'Día por día', SEMANA: 'Semana por semana', MES: 'Mes por mes' }[r.agrupar]}</h2>
       <div class="tabla-contenedor"><table class="tabla-periodos">
-        <thead><tr><th>Periodo</th><th class="num">Ventas</th><th class="num">Utilidad</th><th class="num">N.º ventas</th><th class="num">Compras</th></tr></thead>
-        <tbody>${r.periodos.map((p) => `<tr class="${p.numeroVentas || p.compras ? '' : 'inactivo'}">
+        <thead><tr><th>Periodo</th><th class="num">Ventas</th><th class="num">Utilidad</th><th class="num">N.º ventas</th><th class="num">Gastos</th><th class="num">Compras</th></tr></thead>
+        <tbody>${r.periodos.map((p) => `<tr class="${p.numeroVentas || p.compras || p.gastos ? '' : 'inactivo'}">
           <td>${esc(p.etiqueta)}<div class="barra-dato" aria-hidden="true"><div style="width:${Math.round(p.ventas * 100 / maximo)}%"></div></div></td>
-          <td class="num">${cop(p.ventas)}</td><td class="num">${cop(p.utilidad)}</td><td class="num">${p.numeroVentas}</td><td class="num">${cop(p.compras)}</td></tr>`).join('')}</tbody>
-        <tfoot><tr><th>Total</th><th class="num">${cop(a.ventas)}</th><th class="num">${cop(a.utilidad)}</th><th class="num">${a.numeroVentas}</th><th class="num">${cop(a.compras)}</th></tr></tfoot>
+          <td class="num">${cop(p.ventas)}</td><td class="num">${cop(p.utilidad)}</td><td class="num">${p.numeroVentas}</td><td class="num">${cop(p.gastos)}</td><td class="num">${cop(p.compras)}</td></tr>`).join('')}</tbody>
+        <tfoot><tr><th>Total</th><th class="num">${cop(a.ventas)}</th><th class="num">${cop(a.utilidad)}</th><th class="num">${a.numeroVentas}</th><th class="num">${cop(a.gastos)}</th><th class="num">${cop(a.compras)}</th></tr></tfoot>
       </table></div>
     </section>
     <section class="tarjeta">
@@ -1744,7 +1941,10 @@ function textoWhatsappReporte(r) {
     '',
     `Ventas: ${cop(a.ventas)} (${a.numeroVentas} venta(s))`,
     `Utilidad estimada: ${cop(a.utilidad)}`,
+    `Gastos: ${cop(a.gastos + a.costosAdicionales)}`,
+    `*Utilidad después de gastos: ${cop(a.utilidadNeta)}*`,
     `Compras: ${cop(a.compras)}`,
+    ...(a.retiros ? [`Retiros: ${cop(a.retiros)}`] : []),
     '',
     `Frente a ${rangoTexto(r.compDesde, r.compHasta)}: ventas ${v(a.ventas, b.ventas)}, utilidad ${v(a.utilidad, b.utilidad)}`,
     ...(vendidos.length ? ['', '*Más vendidos*', ...vendidos.slice(0, 5).map((p, i) => `${i + 1}. ${p.nombre} (${p.unidades} und.)`)] : []),

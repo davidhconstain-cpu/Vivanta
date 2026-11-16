@@ -11,6 +11,7 @@ import org.springframework.stereotype.Component;
 import com.vivanet.beautystock.entity.EstadoPedido;
 import com.vivanet.beautystock.entity.EstadoVenta;
 import com.vivanet.beautystock.entity.FormaPagoPedido;
+import com.vivanet.beautystock.entity.Frecuencia;
 import com.vivanet.beautystock.entity.MetodoPago;
 import com.vivanet.beautystock.entity.TipoDescuento;
 import com.vivanet.beautystock.entity.TipoEntrega;
@@ -42,6 +43,9 @@ public class RestriccionesEnum implements ApplicationRunner {
         actualizar("ventas", "estado", EstadoVenta.class);
         actualizar("ventas", "descuento_tipo", TipoDescuento.class);
         actualizar("venta_items", "descuento_tipo", TipoDescuento.class);
+        actualizar("gastos", "metodo", MetodoPago.class);
+        actualizar("retiros", "metodo", MetodoPago.class);
+        actualizar("gastos_recurrentes", "frecuencia", Frecuencia.class);
     }
 
     private void actualizar(String tabla, String columna, Class<? extends Enum<?>> tipo) {

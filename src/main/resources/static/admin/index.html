@@ -70,6 +70,9 @@
     .barra-dato { height: 6px; background: var(--linea); border-radius: 999px; margin-top: 6px; max-width: 220px; overflow: hidden; }
     .barra-dato div { height: 100%; background: var(--marca); border-radius: 999px; }
     td.destacado { font-weight: 700; }
+    .indicador.negativo .valor { color: var(--peligro); }
+    .indicadores.cinco { grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); }
+    .indicadores.cinco .indicador .valor { font-size: 32px; }
     td.peligro { color: var(--peligro); }
     .tabla-periodos tfoot th { border-top: 2px solid var(--borde); padding-top: 10px; }
     .lista-alertas { list-style: none; margin: 0; padding: 0; }
@@ -197,6 +200,7 @@
         <a href="#inventario" data-vista="inventario"><svg class="icono-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 8l9-5 9 5v8l-9 5-9-5V8z"/><path d="M3 8l9 5 9-5M12 13v8"/></svg>Inventario</a>
         <a href="#compras" data-vista="compras"><svg class="icono-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 6h11v10H2zM13 10h4l3 3v3h-7"/><circle cx="6" cy="18" r="2"/><circle cx="16" cy="18" r="2"/></svg>Entrada de mercancía</a>
         <a href="#clientes" data-vista="clientes"><svg class="icono-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="8" r="4"/><path d="M2 20v-1a5 5 0 0 1 5-5h4a5 5 0 0 1 5 5v1"/><path d="M16 4.2a4 4 0 0 1 0 7.6M22 20v-1a5 5 0 0 0-3.5-4.8"/></svg>Clientes</a>
+        <a href="#gastos" data-vista="gastos"><svg class="icono-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="6" width="18" height="13" rx="2"/><path d="M3 10h18M16 15h2"/></svg>Gastos y retiros</a>
         <a href="#reportes" data-vista="reportes"><svg class="icono-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>Reportes</a>
         <a href="/catalogo/" target="_blank" rel="noopener"><svg class="icono-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12V4h8l10 10-8 8L3 12z"/><circle cx="7.5" cy="8.5" r="1"/></svg>Catálogo ↗</a>
         <a href="#configuracion" data-vista="configuracion"><svg class="icono-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6h9M17 6h3M4 12h3M11 12h9M4 18h11M19 18h1"/><circle cx="15" cy="6" r="2"/><circle cx="9" cy="12" r="2"/><circle cx="17" cy="18" r="2"/></svg>Configuración</a>

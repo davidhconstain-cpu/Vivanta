@@ -23,6 +23,8 @@ import com.vivanet.beautystock.dto.Dtos.ProductoReporteDto;
 import com.vivanet.beautystock.dto.Dtos.ReporteDto;
 import com.vivanet.beautystock.dto.Dtos.ResumenReporteDto;
 import com.vivanet.beautystock.repository.CompraRepository;
+import com.vivanet.beautystock.repository.GastoRepository;
+import com.vivanet.beautystock.repository.RetiroRepository;
 import com.vivanet.beautystock.repository.VentaRepository;
 
 /**
@@ -44,10 +46,15 @@ public class ReporteService {
 
     private final VentaRepository ventas;
     private final CompraRepository compras;
+    private final GastoRepository gastos;
+    private final RetiroRepository retiros;
 
-    public ReporteService(VentaRepository ventas, CompraRepository compras) {
+    public ReporteService(VentaRepository ventas, CompraRepository compras, GastoRepository gastos,
+            RetiroRepository retiros) {
         this.ventas = ventas;
         this.compras = compras;
+        this.gastos = gastos;
+        this.retiros = retiros;
     }
 
     /** Una linea de venta tal como llega de la base de datos (ver VentaRepository.lineasEntre). */
@@ -75,6 +82,17 @@ public class ReporteService {
         }
     }
 
+    /** Gasto pagado o retiro: solo importan la fecha y el valor. */
+    private record Salida(LocalDate fecha, long valor) {
+        static Salida de(Object[] f) {
+            return new Salida((LocalDate) f[0], (Long) f[1]);
+        }
+    }
+
+    /** Todo lo que se lee de la base de datos para un rango. */
+    private record Datos(List<Linea> lineas, List<CompraFila> compras, List<Salida> gastos, List<Salida> retiros) {
+    }
+
     @Transactional(readOnly = true)
     public ReporteDto reporte(LocalDate desde, LocalDate hasta, String agrupar, LocalDate compDesde, LocalDate compHasta) {
         if (desde == null || hasta == null) {
@@ -95,12 +113,9 @@ public class ReporteService {
             compDesde = compHasta.minusDays(dias - 1);
         }
 
-        List<Linea> lineas = lineas(desde, hasta);
-        List<CompraFila> filasCompras = compras(desde, hasta);
-
-        return new ReporteDto(desde, hasta, grupo, resumen(lineas, filasCompras),
-                compDesde, compHasta, resumen(lineas(compDesde, compHasta), compras(compDesde, compHasta)),
-                periodos(desde, hasta, grupo, lineas, filasCompras), productos(lineas));
+        Datos datos = leer(desde, hasta);
+        return new ReporteDto(desde, hasta, grupo, resumen(datos), compDesde, compHasta,
+                resumen(leer(compDesde, compHasta)), periodos(desde, hasta, grupo, datos), productos(datos.lineas()));
     }
 
     /** El mismo reporte en un archivo de Excel con tres hojas: Resumen, Por periodo y Productos. */
@@ -125,17 +140,21 @@ public class ReporteService {
         resumen.add(comparar("Compras de mercancía", a.compras(), b.compras()));
         resumen.add(comparar("Costos adicionales de compras", a.costosAdicionales(), b.costosAdicionales()));
         resumen.add(comparar("Número de compras", a.numeroCompras(), b.numeroCompras()));
+        resumen.add(comparar("Gastos pagados", a.gastos(), b.gastos()));
+        resumen.add(comparar("Utilidad después de gastos", a.utilidadNeta(), b.utilidadNeta()));
+        resumen.add(comparar("Retiros del negocio", a.retiros(), b.retiros()));
         resumen.add(new Object[] {});
-        resumen.add(new Object[] { "Las ventas incluyen el domicilio cobrado; la utilidad no. Ventas anuladas no se cuentan." });
+        resumen.add(new Object[] { "Las ventas incluyen el domicilio cobrado; la utilidad no. Ventas anuladas no se cuentan."});
+        resumen.add(new Object[] { "Utilidad después de gastos = utilidad − gastos pagados − costos adicionales de compras. Los retiros no son gastos y van aparte." });
 
         List<Object[]> periodos = new ArrayList<>();
         periodos.add(new Object[] { Excel.negrita("Periodo"), Excel.negrita("Desde"), Excel.negrita("Hasta"),
-                Excel.negrita("Ventas"), Excel.negrita("Utilidad"), Excel.negrita("N.º ventas"), Excel.negrita("Compras") });
+                Excel.negrita("Ventas"), Excel.negrita("Utilidad"), Excel.negrita("N.º ventas"), Excel.negrita("Compras"), Excel.negrita("Gastos"), Excel.negrita("Retiros") });
         for (PeriodoReporteDto p : r.periodos()) {
             periodos.add(new Object[] { p.etiqueta(), p.desde().format(fecha), p.hasta().format(fecha), p.ventas(),
-                    p.utilidad(), p.numeroVentas(), p.compras() });
+                    p.utilidad(), p.numeroVentas(), p.compras(), p.gastos(), p.retiros() });
         }
-        periodos.add(new Object[] { Excel.negrita("Total"), null, null, a.ventas(), a.utilidad(), a.numeroVentas(), a.compras() });
+        periodos.add(new Object[] { Excel.negrita("Total"), null, null, a.ventas(), a.utilidad(), a.numeroVentas(), a.compras(), a.gastos(), a.retiros() });
 
         List<Object[]> productos = new ArrayList<>();
         productos.add(new Object[] { Excel.negrita("Producto"), Excel.negrita("Marca"), Excel.negrita("Unidades"),
@@ -153,20 +172,21 @@ public class ReporteService {
                 anterior != 0 ? Math.round((actual - anterior) * 100.0 / Math.abs(anterior)) : null };
     }
 
-    private List<Linea> lineas(LocalDate desde, LocalDate hasta) {
-        return ventas.lineasEntre(desde.atStartOfDay(), hasta.plusDays(1).atStartOfDay()).stream()
-                .map(Linea::de).toList();
-    }
-
-    private List<CompraFila> compras(LocalDate desde, LocalDate hasta) {
-        return compras.totalesEntre(desde, hasta).stream().map(CompraFila::de).toList();
+    private Datos leer(LocalDate desde, LocalDate hasta) {
+        return new Datos(
+                ventas.lineasEntre(desde.atStartOfDay(), hasta.plusDays(1).atStartOfDay()).stream().map(Linea::de).toList(),
+                compras.totalesEntre(desde, hasta).stream().map(CompraFila::de).toList(),
+                gastos.totalesEntre(desde, hasta).stream().map(Salida::de).toList(),
+                retiros.totalesEntre(desde, hasta).stream().map(Salida::de).toList());
     }
 
     /**
      * Totales del rango. Los datos de la venta (total, utilidad, domicilio) se repiten en cada una
      * de sus lineas, por eso se suman una sola vez por venta.
      */
-    private static ResumenReporteDto resumen(List<Linea> lineas, List<CompraFila> filasCompras) {
+    private static ResumenReporteDto resumen(Datos datos) {
+        List<Linea> lineas = datos.lineas();
+        List<CompraFila> filasCompras = datos.compras();
         long ventasTotal = 0, utilidad = 0, unidades = 0, descuentos = 0, domicilios = 0;
         Set<Long> vistas = new HashSet<>();
         for (Linea l : lineas) {
@@ -181,23 +201,25 @@ public class ReporteService {
         }
         long comprasTotal = filasCompras.stream().mapToLong(CompraFila::total).sum();
         long adicionales = filasCompras.stream().mapToLong(CompraFila::adicionales).sum();
+        long totalGastos = datos.gastos().stream().mapToLong(Salida::valor).sum();
+        long totalRetiros = datos.retiros().stream().mapToLong(Salida::valor).sum();
         return new ResumenReporteDto(ventasTotal, utilidad, vistas.size(), unidades, descuentos, domicilios,
-                comprasTotal, adicionales, filasCompras.size());
+                comprasTotal, adicionales, filasCompras.size(), totalGastos, totalRetiros,
+                utilidad - totalGastos - adicionales);
     }
 
     /** Una fila por dia, semana (lunes a domingo) o mes, incluidos los que no tuvieron movimiento. */
-    private static List<PeriodoReporteDto> periodos(LocalDate desde, LocalDate hasta, String grupo,
-            List<Linea> lineas, List<CompraFila> filasCompras) {
-        // Inicio de cada periodo -> acumulados [ventas, utilidad, numeroVentas, compras]
+    private static List<PeriodoReporteDto> periodos(LocalDate desde, LocalDate hasta, String grupo, Datos datos) {
+        // Inicio de cada periodo -> acumulados [ventas, utilidad, numeroVentas, compras, gastos, retiros]
         Map<LocalDate, long[]> acumulados = new LinkedHashMap<>();
         for (LocalDate inicio = inicioDe(desde, grupo); !inicio.isAfter(hasta); inicio = siguiente(inicio, grupo)) {
-            acumulados.put(inicio, new long[4]);
+            acumulados.put(inicio, new long[6]);
             if (acumulados.size() > MAXIMO_PERIODOS) {
                 throw new NegocioException("Son demasiadas filas para ver día por día. Agrupa por semana o por mes.");
             }
         }
         Set<Long> vistas = new HashSet<>();
-        for (Linea l : lineas) {
+        for (Linea l : datos.lineas()) {
             if (vistas.add(l.ventaId())) {
                 long[] a = acumulados.get(inicioDe(l.fecha(), grupo));
                 a[0] += l.totalVenta();
@@ -205,8 +227,14 @@ public class ReporteService {
                 a[2]++;
             }
         }
-        for (CompraFila c : filasCompras) {
+        for (CompraFila c : datos.compras()) {
             acumulados.get(inicioDe(c.fecha(), grupo))[3] += c.total();
+        }
+        for (Salida g : datos.gastos()) {
+            acumulados.get(inicioDe(g.fecha(), grupo))[4] += g.valor();
+        }
+        for (Salida r : datos.retiros()) {
+            acumulados.get(inicioDe(r.fecha(), grupo))[5] += r.valor();
         }
         List<PeriodoReporteDto> lista = new ArrayList<>();
         acumulados.forEach((inicio, a) -> {
@@ -214,7 +242,7 @@ public class ReporteService {
             LocalDate fin = siguiente(inicio, grupo).minusDays(1);
             LocalDate d = inicio.isBefore(desde) ? desde : inicio;
             LocalDate h = fin.isAfter(hasta) ? hasta : fin;
-            lista.add(new PeriodoReporteDto(etiqueta(d, h, grupo), d, h, a[0], a[1], (int) a[2], a[3]));
+            lista.add(new PeriodoReporteDto(etiqueta(d, h, grupo), d, h, a[0], a[1], (int) a[2], a[3], a[4], a[5]));
         });
         return lista;
     }

@@ -6,6 +6,7 @@ import java.util.List;
 
 import com.vivanet.beautystock.entity.EstadoPedido;
 import com.vivanet.beautystock.entity.FormaPagoPedido;
+import com.vivanet.beautystock.entity.Frecuencia;
 import com.vivanet.beautystock.entity.MetodoPago;
 import com.vivanet.beautystock.entity.TipoDescuento;
 import com.vivanet.beautystock.entity.TipoEntrega;
@@ -258,16 +259,55 @@ public final class Dtos {
             long metaVentasMes, long metaUtilidadMes, long clientesConSaldo) {
     }
 
+    // ---------- Gastos y retiros ----------
+
+    public record GastoRequest(@NotNull(message = "es obligatoria") LocalDate fecha, @NotBlank(message = "es obligatorio") String concepto, @Min(value = 1, message = "debe ser mayor que cero") long valor,
+            MetodoPago metodo,
+            /** false = queda pendiente de pago (vence en "fecha"). */
+            boolean pagado) {
+    }
+
+    public record PagarGastoRequest(@NotNull(message = "es obligatoria") LocalDate fechaPago, MetodoPago metodo) {
+    }
+
+    public record GastoDto(Long id, LocalDate fecha, String concepto, long valor, MetodoPago metodo, boolean pagado,
+            LocalDate fechaPago, Long recurrenteId) {
+    }
+
+    public record RetiroRequest(@NotNull(message = "es obligatoria") LocalDate fecha, @Min(value = 1, message = "debe ser mayor que cero") long valor, @NotBlank(message = "es obligatorio") String motivo, MetodoPago metodo) {
+    }
+
+    public record RetiroDto(Long id, LocalDate fecha, long valor, String motivo, MetodoPago metodo) {
+    }
+
+    public record GastoRecurrenteRequest(@NotBlank(message = "es obligatorio") String concepto, @Min(value = 1, message = "debe ser mayor que cero") long valor, @NotNull(message = "es obligatoria") Frecuencia frecuencia,
+            @NotNull(message = "es obligatoria") LocalDate proximaFecha, boolean activo) {
+    }
+
+    public record GastoRecurrenteDto(Long id, String concepto, long valor, Frecuencia frecuencia, LocalDate proximaFecha,
+            boolean activo) {
+    }
+
+    /** Todo lo de la pantalla de gastos: pendientes (de cualquier fecha) y lo pagado en el rango. */
+    public record GastosDto(List<GastoDto> pendientes, List<GastoDto> gastos, List<RetiroDto> retiros,
+            List<GastoRecurrenteDto> recurrentes, long totalGastos, long totalRetiros, long totalPendiente) {
+    }
+
     // ---------- Reportes ----------
 
-    /** Totales de un rango de fechas. "ventas" incluye el domicilio cobrado; la utilidad no. */
+    /**
+     * Totales de un rango de fechas. "ventas" incluye el domicilio cobrado; la utilidad no.
+     * "gastos" son los gastos pagados en el rango; los retiros van aparte y no son gastos.
+     */
     public record ResumenReporteDto(long ventas, long utilidad, int numeroVentas, long unidades, long descuentos,
-            long domicilios, long compras, long costosAdicionales, int numeroCompras) {
+            long domicilios, long compras, long costosAdicionales, int numeroCompras, long gastos, long retiros,
+            /** Lo que queda despues de gastos: utilidad - gastos pagados - costos adicionales de compras. */
+            long utilidadNeta) {
     }
 
     /** Una fila del reporte por dia, semana o mes. */
     public record PeriodoReporteDto(String etiqueta, LocalDate desde, LocalDate hasta, long ventas, long utilidad,
-            int numeroVentas, long compras) {
+            int numeroVentas, long compras, long gastos, long retiros) {
     }
 
     /** Lo vendido de un producto en el rango (ya con su parte del descuento global de cada venta). */
