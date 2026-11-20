@@ -32,9 +32,15 @@ function urlSegura(texto) {
 const fotoSegura = (u) => /^\/(?!\/)/.test(String(u || '')) ? u : urlSegura(u);
 
 let catalogo = null;
-let categoria = '';
 let busqueda = '';
-let marca = '';
+/**
+ * Filtros de "Nuestro catálogo". Categorias y marcas pueden ser varias a la vez (Set = lista sin repetidos).
+ * min/max = rango de precio en pesos (null = sin limite). orden = como se ordena la grilla.
+ */
+const filtros = {
+  categorias: new Set(), marcas: new Set(), min: null, max: null,
+  disponibles: false, ofertas: false, sets: false, orden: 'recomendados',
+};
 let carrito = cargarCarrito();                        // { productoId: cantidad }
 let datosCliente = cargar('vivanta-cliente', {});     // nombre, telefono, direccion, entrega, formaPago...
 
@@ -90,6 +96,7 @@ async function iniciar() {
   dibujarPie(n);
   dibujarMenu(n);
   prepararBuscador();
+  prepararFiltros();
   prepararWhatsapp(n);
   prepararAparicion();
 
@@ -101,6 +108,7 @@ async function iniciar() {
 
 function mostrar() {
   abrirMarcas(false);
+  if ($('#filtros').classList.contains('abierto')) abrirFiltros(false);
   $('#waFloat').hidden = !catalogo.negocio.whatsapp;
   if (!catalogo.habilitado) return mantenimiento();
   const enPedido = location.hash === '#pedido' && lineas().length > 0;
@@ -212,8 +220,14 @@ function dibujarMenu(n) {
 
 /** Filtra por categoria y baja hasta los productos. "Todos los productos" quita todos los filtros. */
 function irACategoria(cat) {
-  categoria = cat;
-  if (!cat) { marca = ''; busqueda = ''; $('#buscar').value = ''; marcarMarcas(); }
+  if (!cat) limpiarFiltros(true);
+  else {
+    // Desde el menu se mira UNA categoria (o Ofertas o Sets); la marca y la busqueda se conservan.
+    filtros.categorias.clear();
+    filtros.ofertas = cat === OFERTAS;
+    filtros.sets = cat === SETS;
+    if (cat !== OFERTAS && cat !== SETS) filtros.categorias.add(cat);
+  }
   const bajar = () => $('#productos')?.scrollIntoView({ block: 'start' });
   if (location.hash === '#pedido') { location.hash = ''; setTimeout(bajar, 80); return; }
   // Si ya estamos viendo los productos, basta con volver a dibujar la grilla.
@@ -228,10 +242,10 @@ function abrirMarcas(si) {
   $('#buscador').classList.toggle('open', si && !$('#marcas').hidden);
 }
 
-/** Pinta la marca elegida en las baldosas. */
+/** Pinta las marcas elegidas en las baldosas. */
 function marcarMarcas() {
   $$('.brand-tile').forEach((b) => {
-    const activa = b.dataset.marca === marca;
+    const activa = filtros.marcas.has(b.dataset.marca);
     b.classList.toggle('active', activa);
     b.setAttribute('aria-pressed', String(activa));
   });
@@ -241,7 +255,10 @@ function marcarMarcas() {
 function dibujarMarcas() {
   const marcas = marcasDelCatalogo();
   $('#marcas').hidden = marcas.length < 2;
-  $('#marcas').innerHTML = marcas.map((m) => `<button type="button" class="brand-tile ${m === marca ? 'active' : ''}" data-marca="${esc(m)}" aria-pressed="${m === marca}">${esc(m)}</button>`).join('');
+  $('#marcas').innerHTML = marcas.map((m) => {
+    const activa = filtros.marcas.has(m);
+    return `<button type="button" class="brand-tile ${activa ? 'active' : ''}" data-marca="${esc(m)}" aria-pressed="${activa}">${esc(m)}</button>`;
+  }).join('');
 }
 
 /** Baja suavemente hasta "Nuestro catálogo" (sin animacion si la persona la desactivo). */
@@ -259,16 +276,17 @@ function prepararBuscador() {
   });
   // Tocar fuera del buscador cierra el panel de marcas.
   document.addEventListener('click', (e) => { if (!barra.contains(e.target)) abrirMarcas(false); });
-  // Elegir una marca filtra; tocar otra vez la misma la quita.
+  // Elegir una marca la suma al filtro; tocar otra vez la misma la quita.
   $('#marcas').addEventListener('click', (e) => {
     const b = e.target.closest('[data-marca]');
     if (!b) return;
-    marca = marca === b.dataset.marca ? '' : b.dataset.marca;
+    const m = b.dataset.marca;
+    if (filtros.marcas.has(m)) filtros.marcas.delete(m); else filtros.marcas.add(m);
     marcarMarcas();
     abrirMarcas(false);
     entrada.blur();
     dibujarGrilla();
-    if (marca) bajarAProductos();
+    if (filtros.marcas.has(m)) bajarAProductos();
   });
 }
 
@@ -300,18 +318,21 @@ function pantallaProductos() {
     <section class="real-catalog" id="productos">
       <div class="real-section-heading">
         <div><h2>Nuestro catálogo</h2><p>Descubre todos nuestros productos.</p></div>
-        <div class="heading-tools"><span id="productCount"></span><button type="button" class="clear-filters" id="limpiar" hidden>Limpiar filtros</button></div>
+        <div class="heading-tools">
+          <button type="button" class="filtrar-btn" id="abrir-filtros" aria-haspopup="dialog" aria-controls="filtros">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="18" r="2"/></svg>
+            Filtrar y ordenar<span class="filtros-cuenta" id="filtros-cuenta" hidden></span>
+          </button>
+          <span id="productCount"></span>
+          <button type="button" class="clear-filters" id="limpiar" hidden>Limpiar filtros</button>
+        </div>
       </div>
       <div class="filtro-activo" id="filtro-activo" aria-live="polite"></div>
       <div class="real-product-grid" id="grilla"></div>
       <p class="no-results" id="sin-resultados" hidden>No encontramos productos con esos filtros.</p>
     </section>`;
-  $('#limpiar').addEventListener('click', () => {
-    categoria = ''; marca = ''; busqueda = '';
-    $('#buscar').value = '';
-    marcarMarcas();
-    dibujarGrilla();
-  });
+  $('#limpiar').addEventListener('click', () => { limpiarFiltros(true); dibujarGrilla(); });
+  $('#abrir-filtros').addEventListener('click', () => abrirFiltros(true));
   activarCarrusel();
   dibujarGrilla();
   actualizarBarra();
@@ -393,23 +414,239 @@ function tarjetaProducto(p) {
     </article>`;
 }
 
-/** Dibuja "Nuestro catálogo" con la busqueda, la marca y la categoria que esten puestas. */
+// ---------- Filtros del catálogo ----------
+
+const ORDENES = {
+  recomendados: 'Recomendados',
+  'precio-asc': 'Precio: menor a mayor',
+  'precio-desc': 'Precio: mayor a menor',
+  descuento: 'Mayor descuento',
+  nombre: 'Nombre: A a Z',
+};
+/** Rangos rapidos de precio: [minimo, maximo] (null = sin limite). */
+const RANGOS = [[null, 30000], [30000, 60000], [60000, 100000], [100000, null]];
+const textoRango = (min, max) => min == null ? `Hasta ${cop(max)}` : max == null ? `Más de ${cop(min)}` : `${cop(min)} – ${cop(max)}`;
+/** Porcentaje que se ahorra: por oferta, o en un set frente a comprar por separado. */
+const ahorro = (p) => {
+  const antes = tachado(p);
+  return antes > p.precio ? (antes - p.precio) / antes : 0;
+};
+const plural = (n, uno, varios) => `${n} ${n === 1 ? uno : varios}`;
+
+/** Cuantos filtros hay puestos (sin contar la busqueda ni el orden): el numerito del boton. */
+const filtrosPuestos = () => filtros.categorias.size + filtros.marcas.size
+  + (filtros.min != null || filtros.max != null ? 1 : 0) + filtros.disponibles + filtros.ofertas + filtros.sets;
+
+/** Quita todos los filtros (y la busqueda si se pide). El orden vuelve a "Recomendados". */
+function limpiarFiltros(tambienBusqueda) {
+  filtros.categorias.clear();
+  filtros.marcas.clear();
+  filtros.min = filtros.max = null;
+  filtros.disponibles = filtros.ofertas = filtros.sets = false;
+  filtros.orden = 'recomendados';
+  if (tambienBusqueda) { busqueda = ''; $('#buscar').value = ''; }
+  marcarMarcas();
+  if ($('#filtros').classList.contains('abierto')) dibujarPanelFiltros();
+}
+
+/** Productos que cumplen la busqueda y todos los filtros, ya ordenados. */
+function productosFiltrados() {
+  const texto = normalizar(busqueda.trim());
+  const { categorias, marcas, min, max } = filtros;
+  const lista = catalogo.productos.filter((p) => (!categorias.size || categorias.has(p.categoria))
+    && (!marcas.size || marcas.has(p.marca))
+    && (min == null || p.precio >= min) && (max == null || p.precio <= max)
+    && (!filtros.disponibles || p.disponible > 0)
+    && (!filtros.ofertas || p.precioAntes)
+    && (!filtros.sets || p.combo)
+    && normalizar(`${p.nombre} ${p.marca || ''} ${p.categoria || ''}`).includes(texto));
+  const comparar = {
+    'precio-asc': (a, b) => a.precio - b.precio,
+    'precio-desc': (a, b) => b.precio - a.precio,
+    descuento: (a, b) => ahorro(b) - ahorro(a),
+    nombre: (a, b) => a.nombre.localeCompare(b.nombre, 'es'),
+  }[filtros.orden];
+  // Siempre primero lo que se puede comprar; los agotados al final. Dentro de cada grupo, el orden elegido.
+  return lista.sort((a, b) => ((b.disponible > 0) - (a.disponible > 0)) || (comparar ? comparar(a, b) : 0));
+}
+
+/** Etiquetas de los filtros puestos, cada una con su × para quitarla. */
+function etiquetasFiltros() {
+  const chip = (dato, texto) => `<button type="button" class="chip-filtro" data-quitar="${esc(dato)}" aria-label="Quitar filtro ${esc(texto)}">${esc(texto)}<span aria-hidden="true">×</span></button>`;
+  return [
+    busqueda.trim() && chip('busqueda', `“${busqueda.trim()}”`),
+    ...[...filtros.categorias].map((c) => chip('cat:' + c, c)),
+    ...[...filtros.marcas].map((m) => chip('marca:' + m, m)),
+    (filtros.min != null || filtros.max != null) && chip('precio', textoRango(filtros.min, filtros.max)),
+    filtros.disponibles && chip('disponibles', 'Solo disponibles'),
+    filtros.ofertas && chip('ofertas', 'En oferta'),
+    filtros.sets && chip('sets', 'Sets'),
+  ].filter(Boolean).join('');
+}
+
+/** Dibuja "Nuestro catálogo" con la busqueda, los filtros y el orden que esten puestos. */
 function dibujarGrilla() {
   if (!$('#grilla')) return;
-  const texto = normalizar(busqueda.trim());
-  const nombreCategoria = categoria === OFERTAS ? 'Ofertas' : categoria === SETS ? 'Sets' : categoria;
-  const filtros = [nombreCategoria, marca].filter(Boolean);
-  $('#filtro-activo').innerHTML = filtros.length ? `<span>Mostrando: <strong>${filtros.map(esc).join(' · ')}</strong></span>` : '';
-  $('#limpiar').hidden = !(categoria || marca || texto);
-  const lista = catalogo.productos.filter((p) => (!categoria || p.categoria === categoria
-      || (categoria === OFERTAS && p.precioAntes) || (categoria === SETS && p.combo))
-    && (!marca || p.marca === marca)
-    && normalizar(`${p.nombre} ${p.marca || ''} ${p.categoria || ''}`).includes(texto))
-    // Primero lo que se puede comprar; los agotados al final (sort es estable: cada grupo conserva su orden).
-    .sort((a, b) => (b.disponible > 0) - (a.disponible > 0));
+  const lista = productosFiltrados();
+  const puestos = filtrosPuestos();
+  $('#filtro-activo').innerHTML = etiquetasFiltros();
+  $('#limpiar').hidden = !(puestos || busqueda.trim() || filtros.orden !== 'recomendados');
+  $('#filtros-cuenta').hidden = !puestos;
+  $('#filtros-cuenta').textContent = puestos;
   $('#grilla').innerHTML = lista.map(tarjetaProducto).join('');
-  $('#productCount').textContent = lista.length + (lista.length === 1 ? ' producto' : ' productos');
+  $('#productCount').textContent = plural(lista.length, 'producto', 'productos');
   $('#sin-resultados').hidden = lista.length > 0;
+  const ver = $('#ver-resultados');
+  if (ver) ver.textContent = lista.length ? `Ver ${plural(lista.length, 'producto', 'productos')}` : 'Sin resultados';
+}
+
+/** Quita un filtro desde su etiqueta (la × de la fila "Mostrando"). */
+function quitarFiltro(dato) {
+  if (dato === 'busqueda') { busqueda = ''; $('#buscar').value = ''; }
+  else if (dato === 'precio') filtros.min = filtros.max = null;
+  else if (dato.startsWith('cat:')) filtros.categorias.delete(dato.slice(4));
+  else if (dato.startsWith('marca:')) filtros.marcas.delete(dato.slice(6));
+  else filtros[dato] = false;   // disponibles, ofertas o sets
+  marcarMarcas();
+  dibujarGrilla();
+}
+
+/** Panel lateral "Filtrar y ordenar". Se arma cada vez que se abre, con lo que este puesto. */
+function dibujarPanelFiltros() {
+  const productos = catalogo.productos;
+  const cuantos = (campo, valor) => productos.filter((p) => p[campo] === valor).length;
+  const casilla = (nombre, valor, texto, marcada, cuenta) => `<label class="filtro-opcion">
+      <input type="checkbox" name="${nombre}" value="${esc(valor)}" ${marcada ? 'checked' : ''}>
+      <span>${esc(texto)}</span>${cuenta != null ? `<span class="filtro-n">${cuenta}</span>` : ''}</label>`;
+  const hayOfertas = productos.some((p) => p.precioAntes);
+  const haySets = productos.some((p) => p.combo);
+  const categorias = categoriasDelCatalogo();
+  const marcas = marcasDelCatalogo();
+  $('#filtros').innerHTML = `
+    <div class="filtros-cabeza">
+      <h2 id="filtros-titulo">Filtrar y ordenar</h2>
+      <button type="button" class="filtros-cerrar" data-cerrar-filtros aria-label="Cerrar">×</button>
+    </div>
+    <form class="filtros-cuerpo" id="form-filtros" novalidate>
+      <fieldset class="filtro-grupo">
+        <legend>Ordenar por</legend>
+        ${Object.entries(ORDENES).map(([valor, texto]) => `<label class="filtro-opcion">
+          <input type="radio" name="orden" value="${valor}" ${filtros.orden === valor ? 'checked' : ''}><span>${texto}</span></label>`).join('')}
+      </fieldset>
+      <fieldset class="filtro-grupo">
+        <legend>Precio</legend>
+        <div class="filtro-rango">
+          <label>Mínimo<input type="number" name="min" inputmode="numeric" min="0" step="1000" placeholder="$ 0" value="${filtros.min ?? ''}"></label>
+          <label>Máximo<input type="number" name="max" inputmode="numeric" min="0" step="1000" placeholder="Sin límite" value="${filtros.max ?? ''}"></label>
+        </div>
+        <div class="filtro-chips">
+          ${RANGOS.map(([min, max]) => {
+            const activo = filtros.min === min && filtros.max === max;
+            return `<button type="button" class="${activo ? 'activo' : ''}" data-rango="${min ?? ''}-${max ?? ''}" aria-pressed="${activo}">${textoRango(min, max)}</button>`;
+          }).join('')}
+        </div>
+      </fieldset>
+      <fieldset class="filtro-grupo">
+        <legend>Mostrar</legend>
+        ${casilla('disponibles', '1', 'Solo disponibles', filtros.disponibles, productos.filter((p) => p.disponible > 0).length)}
+        ${hayOfertas ? casilla('ofertas', '1', 'En oferta', filtros.ofertas, productos.filter((p) => p.precioAntes).length) : ''}
+        ${haySets ? casilla('sets', '1', 'Sets', filtros.sets, productos.filter((p) => p.combo).length) : ''}
+      </fieldset>
+      ${categorias.length > 1 ? `<fieldset class="filtro-grupo">
+        <legend>Categoría</legend>
+        ${categorias.map((c) => casilla('categoria', c, c, filtros.categorias.has(c), cuantos('categoria', c))).join('')}
+      </fieldset>` : ''}
+      ${marcas.length > 1 ? `<fieldset class="filtro-grupo">
+        <legend>Marca</legend>
+        ${marcas.map((m) => casilla('marca', m, m, filtros.marcas.has(m), cuantos('marca', m))).join('')}
+      </fieldset>` : ''}
+    </form>
+    <div class="filtros-pie">
+      <button type="button" class="contorno" data-limpiar-filtros>Limpiar</button>
+      <button type="button" class="primario" id="ver-resultados" data-cerrar-filtros></button>
+    </div>`;
+  dibujarGrilla();   // pone el numero en "Ver N productos"
+}
+
+/** Lee el panel y aplica lo elegido al momento (sin boton "Aplicar"). */
+function leerPanelFiltros() {
+  const form = $('#form-filtros');
+  const marcadas = (nombre) => new Set($$(`input[name="${nombre}"]:checked`, form).map((i) => i.value));
+  const numero = (nombre) => {
+    const v = form.elements[nombre].value.trim();
+    const n = Math.floor(Number(v));
+    return v === '' || !Number.isFinite(n) || n < 0 ? null : n;
+  };
+  filtros.orden = form.elements.orden.value || 'recomendados';
+  filtros.categorias = marcadas('categoria');
+  filtros.marcas = marcadas('marca');
+  filtros.min = numero('min');
+  filtros.max = numero('max');
+  // Si los escribieron al reves (minimo mayor que maximo), se intercambian.
+  if (filtros.min != null && filtros.max != null && filtros.min > filtros.max) [filtros.min, filtros.max] = [filtros.max, filtros.min];
+  filtros.disponibles = Boolean(form.elements.disponibles?.checked);
+  filtros.ofertas = Boolean(form.elements.ofertas?.checked);
+  filtros.sets = Boolean(form.elements.sets?.checked);
+  $$('[data-rango]', $('#filtros')).forEach((b) => {
+    const activo = b.dataset.rango === `${filtros.min ?? ''}-${filtros.max ?? ''}`;
+    b.classList.toggle('activo', activo);
+    b.setAttribute('aria-pressed', String(activo));
+  });
+  marcarMarcas();
+  dibujarGrilla();
+}
+
+let focoAntesDeFiltros = null;
+function abrirFiltros(si) {
+  const panel = $('#filtros');
+  if (si) {
+    focoAntesDeFiltros = document.activeElement;
+    dibujarPanelFiltros();
+    abrirMarcas(false);
+  }
+  panel.classList.toggle('abierto', si);
+  $('#filtros-sombra').hidden = !si;
+  document.body.classList.toggle('modal-abierto', si);
+  $('#abrir-filtros')?.setAttribute('aria-expanded', String(si));
+  if (si) panel.querySelector('.filtros-cerrar').focus();
+  else if (focoAntesDeFiltros?.isConnected) focoAntesDeFiltros.focus();
+}
+
+function prepararFiltros() {
+  const panel = $('#filtros');
+  let espera;
+  panel.addEventListener('change', (e) => { if (e.target.closest('#form-filtros')) leerPanelFiltros(); });
+  // Los precios se aplican cuando se deja de escribir un momento.
+  panel.addEventListener('input', (e) => {
+    if (e.target.type !== 'number') return;
+    clearTimeout(espera);
+    espera = setTimeout(leerPanelFiltros, 400);
+  });
+  panel.addEventListener('submit', (e) => e.preventDefault());
+  panel.addEventListener('click', (e) => {
+    const rango = e.target.closest('[data-rango]');
+    if (rango) {
+      const form = $('#form-filtros');
+      const yaEstaba = rango.classList.contains('activo');
+      const [min, max] = rango.dataset.rango.split('-');
+      form.elements.min.value = yaEstaba ? '' : min;
+      form.elements.max.value = yaEstaba ? '' : max;
+      leerPanelFiltros();
+    }
+    if (e.target.closest('[data-limpiar-filtros]')) { limpiarFiltros(false); dibujarPanelFiltros(); }
+    if (e.target.closest('[data-cerrar-filtros]')) {
+      const ver = e.target.closest('#ver-resultados');
+      abrirFiltros(false);
+      if (ver) bajarAProductos();
+    }
+  });
+  $('#filtros-sombra').addEventListener('click', () => abrirFiltros(false));
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && panel.classList.contains('abierto')) abrirFiltros(false); });
+  // Las × de las etiquetas de filtros.
+  document.addEventListener('click', (e) => {
+    const quitar = e.target.closest('[data-quitar]');
+    if (quitar) quitarFiltro(quitar.dataset.quitar);
+  });
 }
 
 /**
