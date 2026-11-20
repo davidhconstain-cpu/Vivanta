@@ -2,6 +2,8 @@
 // Catalogo publico de Vivanta Coleccion
 // Dos pantallas: la lista de productos (#) y "Tu pedido" (#pedido).
 // El pedido se envia por WhatsApp y queda registrado como "pendiente".
+// El esqueleto fijo (encabezado, buscador, menu, barra, WhatsApp) esta en
+// index.html; aqui se llenan las partes que dependen de los datos.
 // =====================================================================
 
 const $ = (s, r = document) => r.querySelector(s);
@@ -11,16 +13,45 @@ const esc = (t) => String(t ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '
 const telWa = (t) => { const d = String(t || '').replace(/\D/g, ''); return d.length === 10 ? '57' + d : d; };
 const normalizar = (t) => String(t || '').normalize('NFD').replace(/\p{M}/gu, '').toLowerCase();
 const foto = (p) => p.imagenes.length ? `/api/public/imagenes/${p.imagenes[0]}` : '/img/isotipo-vivanta.png';
+const sinMovimiento = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+/**
+ * Enlace seguro para las redes: solo http o https. Si la duena escribio "instagram.com/vivanta"
+ * sin "https://", se lo agregamos. Cualquier otra cosa (por ejemplo "javascript:") se descarta.
+ */
+function urlSegura(texto) {
+  let t = String(texto || '').trim();
+  if (!t) return '';
+  if (!/^[a-z][a-z0-9+.-]*:/i.test(t) && /^[\w-]+(\.[\w-]+)+/.test(t)) t = 'https://' + t;
+  try {
+    const url = new URL(t);
+    return url.protocol === 'http:' || url.protocol === 'https:' ? url.href : '';
+  } catch { return ''; }
+}
+/** Foto de una promocion: una ruta de este mismo sitio ("/api/...") o una direccion http(s). */
+const fotoSegura = (u) => /^\/(?!\/)/.test(String(u || '')) ? u : urlSegura(u);
 
 let catalogo = null;
 let categoria = '';
 let busqueda = '';
 let marca = '';
-let carrito = cargar('vivanta-carrito', {});        // { productoId: cantidad }
-let datosCliente = cargar('vivanta-cliente', {});   // nombre, telefono, direccion, entrega, formaPago...
+let carrito = cargarCarrito();                        // { productoId: cantidad }
+let datosCliente = cargar('vivanta-cliente', {});     // nombre, telefono, direccion, entrega, formaPago...
 
 function cargar(clave, inicial) {
-  try { return JSON.parse(localStorage.getItem(clave)) || inicial; } catch { return inicial; }
+  try {
+    const dato = JSON.parse(localStorage.getItem(clave));
+    // Solo se acepta un objeto normal; cualquier otra cosa guardada se ignora.
+    return dato && typeof dato === 'object' && !Array.isArray(dato) ? dato : inicial;
+  } catch { return inicial; }
+}
+/** El pedido guardado: solo ids numericos y cantidades enteras positivas (lo demas se descarta). */
+function cargarCarrito() {
+  const limpio = {};
+  for (const [id, cantidad] of Object.entries(cargar('vivanta-carrito', {}))) {
+    if (/^\d+$/.test(id) && Number.isInteger(cantidad) && cantidad > 0) limpio[id] = cantidad;
+  }
+  return limpio;
 }
 function guardar() {
   try {
@@ -44,18 +75,23 @@ async function iniciar() {
   try {
     catalogo = await (await fetch('/api/public/catalogo')).json();
   } catch {
-    $('#principal').innerHTML = '<p class="vacio">No pudimos cargar el catálogo. Intenta de nuevo en un momento.</p>';
+    $('#principal').innerHTML = '<p class="no-results">No pudimos cargar el catálogo. Intenta de nuevo en un momento.</p>';
     return;
   }
+  catalogo.productos.forEach((p) => { p.imagenes = p.imagenes || []; });
   const n = catalogo.negocio;
   document.title = 'Catálogo · ' + n.nombreNegocio;
-  if (n.tieneLogo) { $('#banner').src = '/api/public/logo'; $('#menu-logo').src = '/api/public/logo'; }
+  // El encabezado siempre usa el logo blanco; el logo subido por la duena va solo en el menu.
+  if (n.tieneLogo) $('#menu-logo').src = '/api/public/logo';
   if (n.envioGratisDesde > 0) {
-    $('#anuncio').innerHTML = `<span class="destello">✦</span><span>Envío gratis en compras desde</span><strong>${cop(n.envioGratisDesde)}</strong><span class="destello">✦</span>`;
+    $('#anuncio').innerHTML = `<span class="spark">✦</span><span>Envío gratis en compras desde</span><strong>${cop(n.envioGratisDesde)}</strong><span class="spark">✦</span>`;
     $('#anuncio').hidden = false;
   }
   dibujarPie(n);
   dibujarMenu(n);
+  prepararBuscador();
+  prepararWhatsapp(n);
+  prepararAparicion();
 
   // Quita del pedido productos que ya no existen.
   for (const id of Object.keys(carrito)) if (!producto(id)) delete carrito[id];
@@ -64,17 +100,29 @@ async function iniciar() {
 }
 
 function mostrar() {
+  abrirMarcas(false);
+  $('#waFloat').hidden = !catalogo.negocio.whatsapp;
   if (!catalogo.habilitado) return mantenimiento();
-  const enPedido = location.hash === '#pedido' && lineas().length;
-  $('#cabeza').classList.toggle('compacta', Boolean(enPedido));
+  const enPedido = location.hash === '#pedido' && lineas().length > 0;
+  $('#cabeza').classList.toggle('compacta', enPedido);
+  // En "Tu pedido" no se busca ni se muestra el boton flotante (ya hay un boton de WhatsApp).
+  $('#buscador').hidden = enPedido;
+  if (enPedido) $('#waFloat').hidden = true;
   if (enPedido) pantallaPedido();
   else pantallaProductos();
   window.scrollTo(0, 0);
 }
 
+/** Muestra u oculta la barra "Ver pedido"; el body avisa al CSS para subir el boton de WhatsApp. */
+function mostrarBarra(si) {
+  $('#barra-pedido').hidden = !si;
+  document.body.classList.toggle('con-barra', si);
+}
+
 function mantenimiento() {
   const n = catalogo.negocio;
-  $('#barra-pedido').hidden = true;
+  mostrarBarra(false);
+  $('#buscador').hidden = true;
   $('#principal').innerHTML = `<div class="contenedor"><div class="tarjeta mantenimiento">
     <h1 style="font-size:2rem;margin:0">Catálogo en mantenimiento</h1>
     <p style="margin:0">Estamos actualizando nuestros productos. Escríbenos y con gusto te atendemos.</p>
@@ -83,39 +131,44 @@ function mantenimiento() {
   </div></div>`;
 }
 
-const ICONO_OFERTA ='<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12V4h8l10 10-8 8L3 12z"/><circle cx="7.5" cy="8.5" r="1"/></svg>';
-
 const FRASE = 'Un universo de belleza por descubrir.';
-/** Enlace de WhatsApp con un mensaje ya escrito (para "Información de compra"). */
+const OFERTAS = '__ofertas__';
+const SETS = '__sets__';
+/** Enlace de WhatsApp con un mensaje ya escrito (para "Información de compra" y el boton flotante). */
 const enlaceWhatsapp = (n, texto) => n.whatsapp ? `https://wa.me/${telWa(n.whatsapp)}?text=${encodeURIComponent(texto)}` : '';
 const categoriasDelCatalogo = () => [...new Set(catalogo.productos.map((p) => p.categoria).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'es'));
+const marcasDelCatalogo = () => [...new Set(catalogo.productos.map((p) => p.marca).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'es'));
+
+// ---------- Pie y menu lateral ----------
 
 /** Pie color vino: nombre, frase, datos, redes con sus logos, enlaces y derechos. */
 function dibujarPie(n) {
-  const red = (clase, nombre, url) => `<a href="${esc(url)}" target="_blank" rel="noopener"><img src="/img/redes/${clase}.png" alt="">${nombre}</a>`;
+  const red = (icono, nombre, url) => url && `<a class="social-item" href="${esc(url)}" target="_blank" rel="noopener">
+      <span class="social-icon supplied-logo"><img src="/img/redes/${icono}.png" alt=""></span><span>${nombre}</span></a>`;
   const redes = [
     n.whatsapp && red('whatsapp', 'WhatsApp', 'https://wa.me/' + telWa(n.whatsapp)),
-    n.instagram && red('instagram', 'Instagram', n.instagram),
-    n.facebook && red('facebook', 'Facebook', n.facebook),
-    n.tiktok && red('tiktok', 'TikTok', n.tiktok),
+    red('instagram', 'Instagram', urlSegura(n.instagram)),
+    red('facebook', 'Facebook', urlSegura(n.facebook)),
+    red('tiktok', 'TikTok', urlSegura(n.tiktok)),
   ].filter(Boolean);
   const info = enlaceWhatsapp(n, 'Hola, quiero información de compra.');
   $('#pie').innerHTML = `
-    <div class="pie-logo">${esc(n.nombreNegocio.replace(/\s+Colecci[oó]n$/i, ''))}</div>
-    <p class="pie-frase">${FRASE}</p>
+    <div class="footer-logo">${esc(n.nombreNegocio.replace(/\s+Colecci[oó]n$/i, ''))}</div>
+    <p>${FRASE}</p>
     ${n.horarios || n.direccion || n.telefono ? `<p class="pie-datos">${[n.horarios, n.direccion, n.telefono && 'Tel. ' + n.telefono].filter(Boolean).map(esc).join('<br>')}</p>` : ''}
-    <section class="redes-caja" id="contactos" aria-label="Redes sociales">
+    <section class="social-section" id="contactos" aria-label="Redes sociales">
       <h2>Síguenos en nuestras redes sociales</h2>
-      <div class="redes" style="--columnas:${redes.length + 1}">
+      <div class="social-grid" style="--columnas:${redes.length + 1}">
         ${redes.join('')}
-        <button type="button" id="compartir"><img src="/img/redes/compartir.png" alt="">Compartir</button>
+        <button class="social-item share-button" type="button" id="compartir"><span class="social-icon supplied-logo"><img src="/img/redes/compartir.png" alt=""></span><span>Compartir</span></button>
       </div>
     </section>
-    <div class="pie-enlaces">
-      ${info ? `<a href="${info}" target="_blank" rel="noopener">Información de compra</a>` : ''}
+    <div class="footer-links">
+      ${info ? `<a href="${esc(info)}" target="_blank" rel="noopener">Información de compra</a>` : ''}
       <button type="button" data-ir-contactos>Contactos</button>
     </div>
-    <div class="derechos">© ${new Date().getFullYear()} ${esc(n.nombreNegocio)}. Todos los derechos reservados.</div>`;
+    <div class="copyright">© ${new Date().getFullYear()} ${esc(n.nombreNegocio)}. Todos los derechos reservados.</div>`;
+  // Compartir: el menu del telefono; si no existe, copiar el enlace; si tampoco, abrir WhatsApp.
   $('#compartir').addEventListener('click', async () => {
     const datos = { title: n.nombreNegocio, text: FRASE, url: location.origin + '/catalogo/' };
     try {
@@ -127,9 +180,17 @@ function dibujarPie(n) {
   });
 }
 
+/** Abre o cierra el menu lateral. */
+function abrirMenu(si) {
+  $('#menu').classList.toggle('abierto', si);
+  $('#menu-sombra').hidden = !si;
+  $('#abrir-menu').setAttribute('aria-expanded', String(si));
+  if (si) { abrirMarcas(false); $('#cerrar-menu').focus(); }
+}
+
 /** Menu lateral: categorias, ofertas y sets; despues informacion de compra y contactos. */
 function dibujarMenu(n) {
-  const boton = (dato, texto, clase = '') => `<button type="button" data-ir-cat="${esc(dato)}" class="${clase}">${esc(texto)}</button>`;
+  const boton = (dato, texto) => `<button type="button" data-ir-cat="${esc(dato)}">${esc(texto)}</button>`;
   const info = enlaceWhatsapp(n, 'Hola, quiero información de compra.');
   $('#menu-contenido').innerHTML = `
     <nav aria-label="Categorías">
@@ -138,106 +199,122 @@ function dibujarMenu(n) {
       ${catalogo.productos.some((p) => p.combo) ? boton(SETS, 'Sets') : ''}
       ${categoriasDelCatalogo().map((c) => boton(c, c)).join('')}
     </nav>
-    <div class="menu-separador"></div>
+    <div class="drawer-separator"></div>
     <nav aria-label="Información">
-      ${info ? `<a class="especial" href="${info}" target="_blank" rel="noopener">Información de compra</a>` : ''}
-      <button type="button" class="especial" data-ir-contactos>Contactos</button>
+      ${info ? `<a class="drawer-special" href="${esc(info)}" target="_blank" rel="noopener">Información de compra</a>` : ''}
+      <button type="button" class="drawer-special" data-ir-contactos>Contactos</button>
     </nav>`;
-  const abrir = (si) => {
-    $('#menu').classList.toggle('abierto', si);
-    $('#menu-sombra').hidden = !si;
-    $('#abrir-menu').setAttribute('aria-expanded', String(si));
-    if (si) $('#cerrar-menu').focus();
-  };
-  $('#abrir-menu').addEventListener('click', () => abrir(true));
-  $('#cerrar-menu').addEventListener('click', () => abrir(false));
-  $('#menu-sombra').addEventListener('click', () => abrir(false));
-  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') abrir(false); });
-  // Categorias (menu, tarjetas destacadas y pie) y "Contactos" funcionan igual desde cualquier lugar.
-  document.addEventListener('click', (e) => {
-    const cat = e.target.closest('[data-ir-cat]');
-    const contactos = e.target.closest('[data-ir-contactos]');
-    if (cat) { abrir(false); irACategoria(cat.dataset.irCat); }
-    if (contactos) { abrir(false); $('#contactos').scrollIntoView({ block: 'start' }); }
+  $('#abrir-menu').addEventListener('click', () => abrirMenu(true));
+  $('#cerrar-menu').addEventListener('click', () => abrirMenu(false));
+  $('#menu-sombra').addEventListener('click', () => abrirMenu(false));
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') { abrirMenu(false); abrirMarcas(false); } });
+}
+
+/** Filtra por categoria y baja hasta los productos. "Todos los productos" quita todos los filtros. */
+function irACategoria(cat) {
+  categoria = cat;
+  if (!cat) { marca = ''; busqueda = ''; $('#buscar').value = ''; marcarMarcas(); }
+  const bajar = () => $('#productos')?.scrollIntoView({ block: 'start' });
+  if (location.hash === '#pedido') { location.hash = ''; setTimeout(bajar, 80); return; }
+  // Si ya estamos viendo los productos, basta con volver a dibujar la grilla.
+  if ($('#grilla')) dibujarGrilla(); else pantallaProductos();
+  requestAnimationFrame(bajar);
+}
+
+// ---------- Buscador con las marcas ----------
+
+/** Abre o cierra el panel de marcas bajo el buscador (solo si hay mas de una marca). */
+function abrirMarcas(si) {
+  $('#buscador').classList.toggle('open', si && !$('#marcas').hidden);
+}
+
+/** Pinta la marca elegida en las baldosas. */
+function marcarMarcas() {
+  $$('.brand-tile').forEach((b) => {
+    const activa = b.dataset.marca === marca;
+    b.classList.toggle('active', activa);
+    b.setAttribute('aria-pressed', String(activa));
   });
 }
 
-/** Filtra por categoria y baja hasta los productos. */
-function irACategoria(cat) {
-  categoria = cat;
-  const bajar = () => $('#productos')?.scrollIntoView({ block: 'start' });
-  if (location.hash === '#pedido') { location.hash = ''; setTimeout(bajar, 80); } else { pantallaProductos(); requestAnimationFrame(bajar); }
+/** Baldosas de marcas, sacadas de los productos reales. Con una sola marca no hace falta el filtro. */
+function dibujarMarcas() {
+  const marcas = marcasDelCatalogo();
+  $('#marcas').hidden = marcas.length < 2;
+  $('#marcas').innerHTML = marcas.map((m) => `<button type="button" class="brand-tile ${m === marca ? 'active' : ''}" data-marca="${esc(m)}" aria-pressed="${m === marca}">${esc(m)}</button>`).join('');
+}
+
+/** Baja suavemente hasta "Nuestro catálogo" (sin animacion si la persona la desactivo). */
+const bajarAProductos = () => $('#productos')?.scrollIntoView({ behavior: sinMovimiento() ? 'auto' : 'smooth', block: 'start' });
+
+function prepararBuscador() {
+  const barra = $('#buscador');
+  const entrada = $('#buscar');
+  entrada.addEventListener('input', () => { busqueda = entrada.value; dibujarGrilla(); });
+  entrada.addEventListener('focus', () => abrirMarcas(true));
+  entrada.addEventListener('click', () => abrirMarcas(true));
+  // Con "Buscar" en el teclado del celular se cierra el teclado y se ven los resultados.
+  entrada.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); entrada.blur(); abrirMarcas(false); bajarAProductos(); }
+  });
+  // Tocar fuera del buscador cierra el panel de marcas.
+  document.addEventListener('click', (e) => { if (!barra.contains(e.target)) abrirMarcas(false); });
+  // Elegir una marca filtra; tocar otra vez la misma la quita.
+  $('#marcas').addEventListener('click', (e) => {
+    const b = e.target.closest('[data-marca]');
+    if (!b) return;
+    marca = marca === b.dataset.marca ? '' : b.dataset.marca;
+    marcarMarcas();
+    abrirMarcas(false);
+    entrada.blur();
+    dibujarGrilla();
+    if (marca) bajarAProductos();
+  });
 }
 
 // ---------- Pantalla 1: productos ----------
 
 function pantallaProductos() {
-  const marcas = [...new Set(catalogo.productos.map((p) => p.marca).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'es'));
-  const cuantos = (m) => catalogo.productos.filter((p) => p.marca === m).length;
-  const destacadas = catalogo.categoriasDestacadas || [];
   const promos = catalogo.promociones || [];
+  const ofertas = catalogo.productos.filter((p) => p.precioAntes && p.disponible > 0);
+  dibujarMarcas();
   $('#principal').innerHTML = `
-    <section class="intro">
-      <p class="frase">${FRASE}</p>
-      <div class="adorno" aria-hidden="true">──── ✦ ────</div>
-      <h1 class="titulo-coleccion">Explora nuestra colección</h1>
-      <p class="subtitulo-coleccion">Encuentra tus favoritos y descubre<br>todo lo que tenemos para ti.</p>
-      <div class="herramientas">
-        <div class="buscador">
-          <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg>
-          <label for="buscar" class="oculto">Buscar productos</label>
-          <input id="buscar" type="search" placeholder="Buscar productos" value="${esc(busqueda)}">
-        </div>
-        ${marcas.length > 1 ? `<label for="filtro-marca" class="oculto">Marca</label>
-        <select id="filtro-marca" class="${marca ? 'elegida' : ''}">
-          <option value="">Todas las marcas</option>
-          ${marcas.map((m) => `<option value="${esc(m)}" ${m === marca ? 'selected' : ''}>${esc(m)} (${cuantos(m)})</option>`).join('')}
-        </select>` : ''}
+    ${promos.length ? `<section class="carousel-section" aria-label="Promociones destacadas">
+      <div class="carousel-window" id="carrusel">
+        ${promos.map((p) => {
+          const enlazada = p.productoId && producto(p.productoId);
+          const imagen = fotoSegura(p.imagenUrl);
+          return `<article class="promo" ${enlazada ? `data-producto="${esc(p.productoId)}" tabindex="0"` : ''}>
+          <div class="promo-visual">${imagen ? `<img src="${esc(imagen)}" alt="" loading="lazy">` : '<span aria-hidden="true">✦</span>'}</div>
+          <div class="promo-copy">${p.marca ? `<div class="promo-brand">${esc(p.marca)}</div>` : ''}<h3>${esc(p.titulo)}</h3>${p.texto ? `<p>${esc(p.texto)}</p>` : ''}
+            ${enlazada ? '<span class="ver">Ver producto</span>' : ''}</div>
+        </article>`;
+        }).join('')}
       </div>
-    </section>
-    ${destacadas.length ? `<section class="seccion" aria-label="Categorías más buscadas">
-      <h2 class="titulo-seccion">Nuestras categorías <em>más buscadas</em></h2>
-      <div class="tarjetas-categoria" style="--columnas:${destacadas.length}">
-        ${destacadas.map((c) => `<button type="button" class="tarjeta-categoria" data-ir-cat="${esc(c.nombre)}">
-          <span class="arte ${c.imagenUrl ? '' : 'sin-foto'}">${c.imagenUrl ? `<img src="${esc(c.imagenUrl)}" alt="" loading="lazy">` : '<span aria-hidden="true">✿</span>'}</span>
-          <span class="nombre">${esc(c.nombre)}</span></button>`).join('')}
-      </div></section>` : ''}
-    ${promos.length ? `<section class="carrusel" aria-label="Promociones destacadas">
-      <div class="carrusel-ventana" id="carrusel">
-        ${promos.map((p) => `<article class="promo" ${p.productoId && producto(p.productoId) ? `data-producto="${p.productoId}" tabindex="0"` : ''}>
-          <div class="promo-foto">${p.imagenUrl ? `<img src="${esc(p.imagenUrl)}" alt="" loading="lazy">` : '<span aria-hidden="true">✦</span>'}</div>
-          <div>${p.marca ? `<div class="promo-marca">${esc(p.marca)}</div>` : ''}<h3>${esc(p.titulo)}</h3>${p.texto ? `<p>${esc(p.texto)}</p>` : ''}
-            ${p.productoId && producto(p.productoId) ? '<span class="ver">Ver producto</span>' : ''}</div>
-        </article>`).join('')}
-      </div>
-      ${promos.length > 1 ? `<div class="puntos">${promos.map((_, i) => `<button type="button" data-punto="${i}" aria-label="Promoción ${i + 1}" aria-current="${i === 0}"></button>`).join('')}</div>` : ''}
+      ${promos.length > 1 ? `<div class="dots">${promos.map((_, i) => `<button type="button" data-punto="${i}" aria-label="Promoción ${i + 1}" aria-current="${i === 0}"></button>`).join('')}</div>` : ''}
     </section>` : ''}
-    <div class="contenedor" id="productos">
-      <h2 class="titulo-seccion">Nuestros <em>productos</em></h2>
+    ${ofertas.length ? `<section class="real-promos" id="promociones">
+      <div class="real-section-heading"><div><h2>Promociones y ofertas vigentes</h2><p>Encuentra tus favoritos a un precio especial.</p></div></div>
+      <div class="real-promo-grid">${ofertas.map(tarjetaOferta).join('')}</div>
+    </section>` : ''}
+    <section class="real-catalog" id="productos">
+      <div class="real-section-heading">
+        <div><h2>Nuestro catálogo</h2><p>Descubre todos nuestros productos.</p></div>
+        <div class="heading-tools"><span id="productCount"></span><button type="button" class="clear-filters" id="limpiar" hidden>Limpiar filtros</button></div>
+      </div>
       <div class="filtro-activo" id="filtro-activo" aria-live="polite"></div>
-      <div class="grilla" id="grilla"></div>
-    </div>`;
-  $('#buscar').addEventListener('input', (e) => { busqueda = e.target.value; dibujarGrilla(); });
-  $('#filtro-marca')?.addEventListener('change', (e) => {
-    marca = e.target.value;
-    e.target.classList.toggle('elegida', Boolean(marca));
+      <div class="real-product-grid" id="grilla"></div>
+      <p class="no-results" id="sin-resultados" hidden>No encontramos productos con esos filtros.</p>
+    </section>`;
+  $('#limpiar').addEventListener('click', () => {
+    categoria = ''; marca = ''; busqueda = '';
+    $('#buscar').value = '';
+    marcarMarcas();
     dibujarGrilla();
   });
-  // Las categorias se eligen en el menu o en las tarjetas destacadas; aqui solo el aviso de ofertas y "Ver todos".
-  $('#principal').onclick = (e) => {
-    const promo = e.target.closest('[data-producto]');
-    if (promo) { verDetalle(producto(promo.dataset.producto)); return; }
-    const b = e.target.closest('[data-cat]');
-    if (!b) return;
-    categoria = b.dataset.cat;
-    dibujarGrilla();
-  };
-  $('#principal').onkeydown = (e) => {
-    const promo = e.target.closest('[data-producto]');
-    if (promo && e.key === 'Enter') verDetalle(producto(promo.dataset.producto));
-  };
   activarCarrusel();
   dibujarGrilla();
+  actualizarBarra();
 }
 
 /** El carrusel pasa solo cada 6 segundos; se puede deslizar con el dedo o tocar los puntos. */
@@ -255,74 +332,105 @@ function activarCarrusel() {
   $$('[data-punto]').forEach((b) => b.addEventListener('click', () => { ir(Number(b.dataset.punto)); reiniciar(); }));
   const reiniciar = () => {
     clearInterval(temporizadorCarrusel);
-    if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    if (sinMovimiento()) return;
     temporizadorCarrusel = setInterval(() => { if (document.contains(ventana)) ir(actual() + 1); else clearInterval(temporizadorCarrusel); }, 6000);
   };
   ventana.addEventListener('pointerdown', reiniciar);
   reiniciar();
 }
 
-const OFERTAS = "__ofertas__";
-const SETS = '__sets__';
 const descuento = (p) => Math.round((1 - p.precio / p.precioAntes) * 100);
-const fechaLarga = (d) => new Date(d + "T00:00").toLocaleDateString("es-CO", { day: "numeric", month: "long" });
+const fechaLarga = (d) => new Date(d + 'T00:00').toLocaleDateString('es-CO', { day: 'numeric', month: 'long' });
 /** Precio tachado: el normal si hay oferta; en un set sin oferta, lo que costaria por separado. */
 const tachado = (p) => p.precioAntes || (p.combo && p.precioSeparado > p.precio ? p.precioSeparado : 0);
 
 /** Precio de la tarjeta: con oferta o set, el precio anterior tachado y lo que se ahorra. */
 function precioHtml(p) {
   const antes = tachado(p);
-  if (!antes) return `<p class="precio">${cop(p.precio)}</p>`;
-  return `<p class="precio">${cop(p.precio)} <s class="antes">${cop(antes)}</s></p>
-      ${p.precioAntes && p.ofertaHasta ? `<p class="vigencia">Hasta el ${fechaLarga(p.ofertaHasta)}</p>`
+  if (!antes) return `<p class="price">${cop(p.precio)}</p>`;
+  return `<p class="price">${cop(p.precio)} <s class="antes">${cop(antes)}</s></p>
+      ${p.precioAntes && p.ofertaHasta ? `<p class="vigencia">Hasta el ${esc(fechaLarga(p.ofertaHasta))}</p>`
         : !p.precioAntes ? `<p class="vigencia">Ahorras ${cop(antes - p.precio)}</p>` : ''}`;
 }
 
+/** Botones de compra: "No disponible", "Agregar" o el − n + si ya esta en el pedido. */
+function accionesHtml(p) {
+  const enPedido = carrito[p.id] || 0;
+  if (p.disponible <= 0) return '<button type="button" disabled>No disponible</button>';
+  if (enPedido) return `<div class="stepper"><button type="button" data-menos="${esc(p.id)}" aria-label="Quitar una unidad">−</button><output>${enPedido}</output><button type="button" class="mas" data-mas="${esc(p.id)}" aria-label="Agregar una unidad">+</button></div>`;
+  return `<button type="button" class="contorno" data-mas="${esc(p.id)}">Agregar</button>`;
+}
+
+/** Foto que abre el detalle del producto. */
+const fotoBoton = (p, etiqueta = '') => `<button type="button" class="foto-btn ${p.imagenes.length ? 'con-foto' : ''}" data-detalle="${esc(p.id)}" aria-label="Ver ${esc(p.nombre)}">
+        <img src="${esc(foto(p))}" alt="" loading="lazy" class="${p.imagenes.length ? '' : 'sin-foto'}">${etiqueta}</button>`;
+
+/** Tarjeta de "Promociones y ofertas vigentes". */
+function tarjetaOferta(p) {
+  return `<article class="real-promo-card ${p.disponible <= 0 ? 'agotado' : ''}">
+      ${fotoBoton(p)}
+      <div class="real-promo-body">
+        <span class="real-discount">${descuento(p)}% OFF</span>
+        <h3>${esc(p.nombre)}</h3><p class="maker">${esc(p.marca)}</p>
+        <div class="real-prices"><span class="real-now">${cop(p.precio)}</span><span class="real-before">${cop(p.precioAntes)}</span></div>
+        ${p.ofertaHasta ? `<p class="vigencia">Hasta el ${esc(fechaLarga(p.ofertaHasta))}</p>` : ''}
+        <div class="acciones" data-acciones="${esc(p.id)}">${accionesHtml(p)}</div>
+      </div>
+    </article>`;
+}
+
+/** Tarjeta de "Nuestro catálogo". */
+function tarjetaProducto(p) {
+  const agotado = p.disponible <= 0;
+  return `<article class="real-product-card ${agotado ? 'agotado' : ''}">
+      ${fotoBoton(p, agotado ? '<span class="etiqueta agotado">Agotado</span>' : '')}
+      ${p.categoria ? `<p class="category">${esc(p.categoria)}</p>` : ''}
+      ${p.combo || (p.precioAntes && !agotado) ? `<div class="pastillas">${p.combo ? '<span class="pastilla-set">Set</span>' : ''}${p.precioAntes && !agotado ? `<span class="pastilla-oferta">Oferta −${descuento(p)} %</span>` : ''}</div>` : ''}
+      <h3>${esc(p.nombre)}</h3>
+      ${p.combo ? `<p class="incluye">Incluye: ${esc(p.incluye)}</p>` : `<p class="maker">${esc(p.marca)}</p>`}
+      ${precioHtml(p)}
+      <div class="acciones" data-acciones="${esc(p.id)}">${accionesHtml(p)}</div>
+    </article>`;
+}
+
+/** Dibuja "Nuestro catálogo" con la busqueda, la marca y la categoria que esten puestas. */
 function dibujarGrilla() {
-  const texto = normalizar(busqueda);
-  // Sin la fila de categorias, se indica que filtro esta puesto y como quitarlo.
-  const nombreFiltro = categoria === OFERTAS ? 'Ofertas' : categoria === SETS ? 'Sets' : categoria;
-  $('#filtro-activo').innerHTML = nombreFiltro
-    ? `<span>Mostrando: <strong>${esc(nombreFiltro)}</strong></span><button type="button" data-cat="">Ver todos los productos ✕</button>` : '';
+  if (!$('#grilla')) return;
+  const texto = normalizar(busqueda.trim());
+  const nombreCategoria = categoria === OFERTAS ? 'Ofertas' : categoria === SETS ? 'Sets' : categoria;
+  const filtros = [nombreCategoria, marca].filter(Boolean);
+  $('#filtro-activo').innerHTML = filtros.length ? `<span>Mostrando: <strong>${filtros.map(esc).join(' · ')}</strong></span>` : '';
+  $('#limpiar').hidden = !(categoria || marca || texto);
   const lista = catalogo.productos.filter((p) => (!categoria || p.categoria === categoria
       || (categoria === OFERTAS && p.precioAntes) || (categoria === SETS && p.combo))
     && (!marca || p.marca === marca)
-    && normalizar(`${p.nombre} ${p.marca} ${p.categoria || ''}`).includes(texto));
-  const hayOfertas = catalogo.productos.some((p) => p.precioAntes && p.disponible > 0);
-  const avisoOfertas = hayOfertas && !categoria && !marca && !texto
-    ? `<button type="button" class="aviso-ofertas" data-cat="${OFERTAS}"><span class="tile">${ICONO_OFERTA.replace(/16/g, '20')}</span>
-        <span><strong>Ofertas especiales</strong><span class="texto">Precios especiales en productos seleccionados</span></span></button>` : '';
-  $('#grilla').innerHTML = avisoOfertas + lista.map((p) => {
-    const agotado = p.disponible <= 0;
-    const enPedido = carrito[p.id] || 0;
-    return `<article class="producto ${agotado ? 'agotado' : ''}">
-      <button type="button" class="foto ${p.imagenes.length ? 'con-foto' : ''}" data-detalle="${p.id}" aria-label="Ver ${esc(p.nombre)}">
-        <img src="${foto(p)}" alt="" loading="lazy" class="${p.imagenes.length ? '' : 'sin-foto'}">
-        ${agotado ? '<span class="etiqueta agotado">Agotado</span>' : ''}
-      </button>
-      <div class="cuerpo">
-        ${p.categoria ? `<span class="categoria-prod">${esc(p.categoria)}</span>` : ''}
-        ${p.combo || (p.precioAntes && !agotado) ? `<div class="pastillas">
-          ${p.combo ? '<span class="pastilla-set">Set</span>' : ''}
-          ${p.precioAntes && !agotado ? `<span class="pastilla-oferta">Oferta −${descuento(p)} %</span>` : ''}</div>` : ''}
-        <h2>${esc(p.nombre)}</h2>
-        ${p.combo ? `<p class="incluye">Incluye: ${esc(p.incluye)}</p>` : `<p class="marca-prod">${esc(p.marca)}</p>`}
-        ${precioHtml(p)}
-        <div class="acciones">
-          ${agotado ? '<button type="button" disabled>No disponible</button>'
-            : enPedido ? `<div class="stepper"><button type="button" data-menos="${p.id}" aria-label="Quitar una unidad">−</button><output>${enPedido}</output><button type="button" class="mas" data-mas="${p.id}" aria-label="Agregar una unidad">+</button></div>`
-            : `<button type="button" class="contorno" data-mas="${p.id}">Agregar</button>`}
-        </div>
-      </div>
-    </article>`;
-  }).join('') + (lista.length ? '' : '<p class="vacio" style="grid-column:1/-1">No encontramos productos.</p>');
-  actualizarBarra();
+    && normalizar(`${p.nombre} ${p.marca || ''} ${p.categoria || ''}`).includes(texto))
+    // Primero lo que se puede comprar; los agotados al final (sort es estable: cada grupo conserva su orden).
+    .sort((a, b) => (b.disponible > 0) - (a.disponible > 0));
+  $('#grilla').innerHTML = lista.map(tarjetaProducto).join('');
+  $('#productCount').textContent = lista.length + (lista.length === 1 ? ' producto' : ' productos');
+  $('#sin-resultados').hidden = lista.length > 0;
+}
+
+/**
+ * Despues de + o −, solo se cambian los botones de ese producto (en ofertas y en el catalogo):
+ * asi la pagina no salta ni las tarjetas vuelven a aparecer. Si el boton tenia el foco, se conserva.
+ */
+function actualizarAcciones(id) {
+  const p = producto(id);
+  const activo = document.activeElement;
+  $$(`[data-acciones="${Number(id)}"]`).forEach((caja) => {
+    const teniaFoco = caja.contains(activo);
+    const eraMenos = teniaFoco && activo.hasAttribute('data-menos');
+    caja.innerHTML = accionesHtml(p);
+    if (teniaFoco) (caja.querySelector(eraMenos ? '[data-menos]' : '[data-mas]') || caja.querySelector('button'))?.focus();
+  });
 }
 
 function actualizarBarra() {
   const ls = lineas();
   const unidades = ls.reduce((s, l) => s + l.cantidad, 0);
-  $('#barra-pedido').hidden = unidades === 0 || location.hash === '#pedido';
+  mostrarBarra(unidades > 0 && location.hash !== '#pedido');
   $('#barra-cuenta').textContent = `Ver pedido · ${unidades} ${unidades === 1 ? 'unidad' : 'unidades'}`;
   const total = ls.reduce((s, l) => s + l.cantidad * l.p.precio, 0);
   $('#barra-total').textContent = cop(total);
@@ -334,9 +442,10 @@ function actualizarBarra() {
 
 function cambiarCantidad(id, delta) {
   const p = producto(id);
+  if (!p) return;
   const nueva = (carrito[id] || 0) + delta;
   if (nueva > p.disponible) {
-    avisar('Solo hay ' + p.disponible + ' unidades disponibles', 'error');
+    avisar(p.disponible === 1 ? 'Solo hay 1 unidad disponible' : 'Solo hay ' + p.disponible + ' unidades disponibles', 'error');
     return;
   }
   if (nueva <= 0) delete carrito[id];
@@ -345,17 +454,29 @@ function cambiarCantidad(id, delta) {
   if (location.hash === '#pedido') {
     if (lineas().length) pantallaPedido(); else location.hash = '';
   } else {
-    dibujarGrilla();
+    actualizarAcciones(id);
+    actualizarBarra();
   }
 }
 
+// Un solo "oyente" para los botones que se dibujan una y otra vez.
 document.addEventListener('click', (e) => {
   const mas = e.target.closest('[data-mas]');
   const menos = e.target.closest('[data-menos]');
-  const detalle = e.target.closest('[data-detalle]');
+  const detalle = e.target.closest('[data-detalle]') || e.target.closest('.promo[data-producto]');
+  const cat = e.target.closest('[data-ir-cat]');
+  const contactos = e.target.closest('[data-ir-contactos]');
   if (mas) cambiarCantidad(mas.dataset.mas, 1);
   if (menos) cambiarCantidad(menos.dataset.menos, -1);
-  if (detalle) verDetalle(producto(detalle.dataset.detalle));
+  if (detalle) verDetalle(producto(detalle.dataset.detalle || detalle.dataset.producto));
+  // Categorias y "Contactos" funcionan igual desde el menu o el pie.
+  if (cat) { abrirMenu(false); irACategoria(cat.dataset.irCat); }
+  if (contactos) { abrirMenu(false); $('#contactos').scrollIntoView({ block: 'start' }); }
+});
+// Las promociones del carrusel tambien se abren con Enter desde el teclado.
+document.addEventListener('keydown', (e) => {
+  const promo = e.target.closest?.('.promo[data-producto]');
+  if (promo && e.key === 'Enter') verDetalle(producto(promo.dataset.producto));
 });
 
 /**
@@ -363,6 +484,7 @@ document.addEventListener('click', (e) => {
  * En un set se listan los productos que incluye, cada uno con su foto.
  */
 function verDetalle(p) {
+  if (!p) return;
   const fotos = p.imagenes.length ? p.imagenes.map((i) => `/api/public/imagenes/${i}`) : [foto(p)];
   const antes = tachado(p);
   const porcentaje = antes ? Math.round((1 - p.precio / antes) * 100) : 0;
@@ -370,26 +492,26 @@ function verDetalle(p) {
   let cantidad = 1;
   const fondo = document.createElement('div');
   fondo.className = 'modal-fondo';
-  fondo.innerHTML = `<div class="modal detalle-producto" role="dialog" aria-label="${esc(p.nombre)}">
-    <button class="icono cerrar-detalle" data-cerrar aria-label="Cerrar">✕</button>
+  fondo.innerHTML = `<div class="modal detalle-producto" role="dialog" aria-modal="true" aria-label="${esc(p.nombre)}">
+    <button type="button" class="icono cerrar-detalle" data-cerrar aria-label="Cerrar">✕</button>
     <div class="detalle-grid">
       <div class="detalle-galeria">
         <div class="foto-grande ${p.imagenes.length ? 'con-foto' : ''}">
-          <img id="foto-grande" src="${fotos[0]}" alt="${esc(p.nombre)}" class="${p.imagenes.length ? '' : 'sin-foto'}">
+          <img id="foto-grande" src="${esc(fotos[0])}" alt="${esc(p.nombre)}" class="${p.imagenes.length ? '' : 'sin-foto'}">
           ${porcentaje > 0 ? `<span class="insignia-descuento">−${porcentaje} %</span>` : ''}
         </div>
-        ${fotos.length > 1 ? `<div class="miniaturas">${fotos.map((f, i) => `<button type="button" data-foto="${i}" aria-label="Foto ${i + 1}" aria-pressed="${i === 0}"><img src="${f}" alt=""></button>`).join('')}</div>` : ''}
+        ${fotos.length > 1 ? `<div class="miniaturas">${fotos.map((f, i) => `<button type="button" data-foto="${i}" aria-label="Foto ${i + 1}" aria-pressed="${i === 0}"><img src="${esc(f)}" alt=""></button>`).join('')}</div>` : ''}
       </div>
       <div class="detalle-info">
         ${p.combo ? '<span class="pastilla-set">Set</span>' : p.categoria ? `<span class="categoria-prod">${esc(p.categoria)}</span>` : ''}
         <h2 class="detalle-nombre">${esc(p.nombre)}</h2>
         <p class="suave" style="margin:0">${esc(p.marca)}${p.combo && p.categoria ? ' · ' + esc(p.categoria) : ''}</p>
         <p class="detalle-precio">${antes ? `<s class="antes">${cop(antes)}</s>` : ''}<span>${cop(p.precio)}</span></p>
-        ${p.precioAntes ? `<p class="vigencia" style="margin:0">Oferta −${descuento(p)} %${p.ofertaHasta ? ' · hasta el ' + fechaLarga(p.ofertaHasta) : ''}</p>`
+        ${p.precioAntes ? `<p class="vigencia" style="margin:0">Oferta −${descuento(p)} %${p.ofertaHasta ? ' · hasta el ' + esc(fechaLarga(p.ofertaHasta)) : ''}</p>`
           : p.combo && antes ? `<p class="vigencia" style="margin:0">Ahorras ${cop(antes - p.precio)} comprando el set</p>` : ''}
         ${p.combo && p.productosDelSet?.length ? `<div class="incluye-set"><h3>Este set incluye</h3><ul>${p.productosDelSet.map((c) => `<li>
-            <img src="${c.imagenId ? '/api/public/imagenes/' + c.imagenId : '/img/isotipo-vivanta.png'}" alt="" loading="lazy">
-            <div><strong>${c.cantidad > 1 ? c.cantidad + ' × ' : ''}${esc(c.nombre)}</strong><span>Precio suelto ${cop(c.precio)}</span></div></li>`).join('')}</ul></div>` : ''}
+            <img src="${c.imagenId ? '/api/public/imagenes/' + esc(c.imagenId) : '/img/isotipo-vivanta.png'}" alt="" loading="lazy">
+            <div><strong>${c.cantidad > 1 ? esc(c.cantidad) + ' × ' : ''}${esc(c.nombre)}</strong><span>Precio suelto ${cop(c.precio)}</span></div></li>`).join('')}</ul></div>` : ''}
         ${p.descripcion ? `<p class="detalle-descripcion">${esc(p.descripcion)}</p>` : ''}
         ${quedan > 0 ? `<div class="detalle-compra">
             <span class="suave">Cantidad</span>
@@ -400,8 +522,16 @@ function verDetalle(p) {
       </div>
     </div>
   </div>`;
+  // Cerrar: con la X, tocando fuera de la ventana o con Escape.
+  const conEscape = (e) => { if (e.key === 'Escape') cerrar(); };
+  const cerrar = () => {
+    fondo.remove();
+    document.body.classList.remove('modal-abierto');
+    document.removeEventListener('keydown', conEscape);
+  };
+  document.addEventListener('keydown', conEscape);
   fondo.addEventListener('click', (e) => {
-    if (e.target === fondo || e.target.closest('[data-cerrar]')) fondo.remove();
+    if (e.target === fondo || e.target.closest('[data-cerrar]')) cerrar();
     const miniatura = e.target.closest('[data-foto]');
     if (miniatura) {
       $('#foto-grande', fondo).src = fotos[miniatura.dataset.foto];
@@ -409,19 +539,21 @@ function verDetalle(p) {
     }
   });
   if (quedan > 0) {
-    const mostrar = () => { $('#det-cantidad', fondo).textContent = cantidad; };
-    $('#det-menos', fondo).addEventListener('click', () => { cantidad = Math.max(1, cantidad - 1); mostrar(); });
+    const mostrarCantidad = () => { $('#det-cantidad', fondo).textContent = cantidad; };
+    $('#det-menos', fondo).addEventListener('click', () => { cantidad = Math.max(1, cantidad - 1); mostrarCantidad(); });
     $('#det-mas', fondo).addEventListener('click', () => {
-      if (cantidad >= quedan) { avisar('Solo hay ' + p.disponible + ' unidades disponibles', 'error'); return; }
-      cantidad += 1; mostrar();
+      if (cantidad >= quedan) { avisar(p.disponible === 1 ? 'Solo hay 1 unidad disponible' : 'Solo hay ' + p.disponible + ' unidades disponibles', 'error'); return; }
+      cantidad += 1; mostrarCantidad();
     });
     $('#det-agregar', fondo).addEventListener('click', () => {
       cambiarCantidad(p.id, cantidad);
       avisar(cantidad + (cantidad === 1 ? ' unidad agregada' : ' unidades agregadas') + ' a tu pedido');
-      fondo.remove();
+      cerrar();
     });
   }
   document.body.append(fondo);
+  document.body.classList.add('modal-abierto');
+  $('[data-cerrar]', fondo).focus();
 }
 
 // ---------- Pantalla 2: tu pedido ----------
@@ -436,7 +568,7 @@ function pantallaPedido() {
   const faltan = n.envioGratisDesde > 0 && !gratis ? n.envioGratisDesde - subtotal : 0;
   const domicilio = entrega === 'DOMICILIO' && !gratis ? n.costoDomicilio : 0;
   const opcion = (nombre, valor, texto, elegida) => `<label class="opcion"><input type="radio" name="${nombre}" value="${valor}" ${valor === elegida ? 'checked' : ''}>${texto}</label>`;
-  $('#barra-pedido').hidden = true;
+  mostrarBarra(false);
   $('#principal').innerHTML = `
     <form class="pedido" id="form-pedido">
       <header>
@@ -445,9 +577,9 @@ function pantallaPedido() {
       </header>
       <section class="tarjeta" style="padding:0">
         <ul class="items">${ls.map(({ p, cantidad }) => `<li>
-          <img src="${foto(p)}" alt="">
+          <img src="${esc(foto(p))}" alt="">
           <div class="texto"><strong>${esc(p.nombre)}</strong><span>${cantidad} × ${cop(p.precio)}</span>
-            <div class="quitar"><button type="button" data-menos="${p.id}" aria-label="Quitar una unidad">−</button><button type="button" data-mas="${p.id}" aria-label="Agregar una unidad">+</button></div></div>
+            <div class="quitar"><button type="button" data-menos="${esc(p.id)}" aria-label="Quitar una unidad">−</button><button type="button" data-mas="${esc(p.id)}" aria-label="Agregar una unidad">+</button></div></div>
           <strong>${cop(cantidad * p.precio)}</strong>
         </li>`).join('')}</ul>
       </section>
@@ -529,12 +661,97 @@ async function enviarPedido(e) {
     </section></div>`;
     // Recarga existencias para el siguiente pedido
     catalogo.productos = (await (await fetch('/api/public/catalogo')).json()).productos;
+    catalogo.productos.forEach((p) => { p.imagenes = p.imagenes || []; });
   } catch (error) {
     if (ventana) ventana.close();
     avisar(error.message, 'error');
     boton.disabled = false;
     boton.textContent = 'Enviar pedido por WhatsApp';
   }
+}
+
+// ---------- Boton flotante de WhatsApp ----------
+
+/**
+ * Boton que se puede arrastrar con el dedo: al soltarlo se pega al costado mas cercano.
+ * Un toque sin arrastrar abre WhatsApp con un mensaje ya escrito.
+ */
+function prepararWhatsapp(n) {
+  if (!n.whatsapp) return;
+  const caja = $('#waFloat');
+  const boton = $('.wa-btn', caja);
+  const abrir = () => window.open(enlaceWhatsapp(n, 'Hola, vengo del catálogo de Vivanta y necesito ayuda.'), '_blank', 'noopener');
+  let inicioX, inicioY, cajaX, cajaY, movido = false, presionado = false;
+  // .left pone el globo de texto del otro lado cuando el boton queda a la izquierda.
+  const marcarLado = () => {
+    const r = caja.getBoundingClientRect();
+    caja.classList.toggle('left', r.left + r.width / 2 < innerWidth / 2);
+  };
+  const pegarAlCostado = () => {
+    const r = caja.getBoundingClientRect();
+    const izquierda = r.left + r.width / 2 < innerWidth / 2;
+    caja.classList.add('snap');
+    caja.classList.toggle('left', izquierda);
+    caja.style.left = (izquierda ? 12 : innerWidth - r.width - 12) + 'px';
+    caja.style.top = Math.min(Math.max(r.top, 12), innerHeight - r.height - 12) + 'px';
+  };
+  boton.addEventListener('pointerdown', (e) => {
+    caja.classList.remove('snap');
+    presionado = true; movido = false;
+    inicioX = e.clientX; inicioY = e.clientY;
+    const r = caja.getBoundingClientRect();
+    cajaX = r.left; cajaY = r.top;
+    boton.setPointerCapture(e.pointerId);
+  });
+  boton.addEventListener('pointermove', (e) => {
+    if (!presionado) return;
+    const dx = e.clientX - inicioX, dy = e.clientY - inicioY;
+    if (!movido && Math.hypot(dx, dy) < 6) return;   // un temblor del dedo no cuenta como arrastre
+    movido = true;
+    caja.classList.add('dragging', 'sin-globo');
+    const r = caja.getBoundingClientRect();
+    caja.style.left = Math.min(Math.max(cajaX + dx, 4), innerWidth - r.width - 4) + 'px';
+    caja.style.top = Math.min(Math.max(cajaY + dy, 4), innerHeight - r.height - 4) + 'px';
+    caja.style.right = 'auto';
+    caja.style.bottom = 'auto';
+    marcarLado();
+  });
+  boton.addEventListener('pointerup', () => {
+    if (!presionado) return;
+    presionado = false;
+    caja.classList.remove('dragging');
+    if (movido) pegarAlCostado(); else abrir();
+  });
+  boton.addEventListener('pointercancel', () => {
+    presionado = false;
+    caja.classList.remove('dragging');
+    if (movido) pegarAlCostado();
+  });
+  // Con el teclado (Enter o espacio) no hay "pointerup": se abre con el click.
+  boton.addEventListener('click', (e) => { if (e.detail === 0) abrir(); });
+  window.addEventListener('resize', () => { if (caja.style.left) pegarAlCostado(); });
+}
+
+// ---------- Aparicion suave al bajar ----------
+
+/** Las secciones y tarjetas aparecen suavemente cuando llegan a la pantalla. */
+function prepararAparicion() {
+  const observador = 'IntersectionObserver' in window ? new IntersectionObserver((entradas) => entradas.forEach((e) => {
+    if (e.isIntersecting) { e.target.classList.add('visible'); observador.unobserve(e.target); }
+  }), { threshold: 0.12, rootMargin: '0px 0px -30px 0px' }) : null;
+  const marcar = (el, i) => {
+    if (el.classList.contains('fx')) return;
+    el.classList.add('fx');
+    el.style.transitionDelay = Math.min(i % 4, 3) * 90 + 'ms';   // las tarjetas de una fila entran una tras otra
+    if (observador) observador.observe(el); else el.classList.add('visible');
+  };
+  const preparar = () => {
+    $$('.carousel-section, .real-section-heading, .social-section').forEach(marcar);
+    $$('.real-promo-card, .real-product-card').forEach(marcar);
+  };
+  preparar();
+  // Cada vez que se dibujan de nuevo las tarjetas (busqueda, marca, categoria), se preparan otra vez.
+  new MutationObserver(preparar).observe($('#principal'), { childList: true, subtree: true });
 }
 
 iniciar();
