@@ -159,7 +159,6 @@ function dibujarPie(n) {
     red('facebook', 'Facebook', urlSegura(n.facebook)),
     red('tiktok', 'TikTok', urlSegura(n.tiktok)),
   ].filter(Boolean);
-  const info = enlaceWhatsapp(n, 'Hola, quiero información de compra.');
   $('#pie').innerHTML = `
     <div class="footer-logo">${esc(n.nombreNegocio.replace(/\s+Colecci[oó]n$/i, ''))}</div>
     <p>${FRASE}</p>
@@ -172,7 +171,8 @@ function dibujarPie(n) {
       </div>
     </section>
     <div class="footer-links">
-      ${info ? `<a href="${esc(info)}" target="_blank" rel="noopener">Información de compra</a>` : ''}
+      <button type="button" data-ir-politica="terminos">Información de compra</button>
+      <button type="button" data-ir-politica="">Políticas</button>
       <button type="button" data-ir-contactos>Contactos</button>
     </div>
     <div class="copyright">© ${new Date().getFullYear()} ${esc(n.nombreNegocio)}. Todos los derechos reservados.</div>`;
@@ -199,7 +199,6 @@ function abrirMenu(si) {
 /** Menu lateral: categorias, ofertas y sets; despues informacion de compra y contactos. */
 function dibujarMenu(n) {
   const boton = (dato, texto) => `<button type="button" data-ir-cat="${esc(dato)}">${esc(texto)}</button>`;
-  const info = enlaceWhatsapp(n, 'Hola, quiero información de compra.');
   $('#menu-contenido').innerHTML = `
     <nav aria-label="Categorías">
       ${boton('', 'Todos los productos')}
@@ -209,7 +208,8 @@ function dibujarMenu(n) {
     </nav>
     <div class="drawer-separator"></div>
     <nav aria-label="Información">
-      ${info ? `<a class="drawer-special" href="${esc(info)}" target="_blank" rel="noopener">Información de compra</a>` : ''}
+      <button type="button" class="drawer-special" data-ir-politica="terminos">Información de compra</button>
+      <button type="button" class="drawer-special" data-ir-politica="">Políticas</button>
       <button type="button" class="drawer-special" data-ir-contactos>Contactos</button>
     </nav>`;
   $('#abrir-menu').addEventListener('click', () => abrirMenu(true));
@@ -703,13 +703,22 @@ document.addEventListener('click', (e) => {
   const detalle = e.target.closest('[data-detalle]') || e.target.closest('.promo[data-producto]');
   const cat = e.target.closest('[data-ir-cat]');
   const contactos = e.target.closest('[data-ir-contactos]');
+  const politica = e.target.closest('[data-ir-politica]');
   if (mas) cambiarCantidad(mas.dataset.mas, 1);
   if (menos) cambiarCantidad(menos.dataset.menos, -1);
   if (detalle) verDetalle(producto(detalle.dataset.detalle || detalle.dataset.producto));
   // Categorias y "Contactos" funcionan igual desde el menu o el pie.
   if (cat) { abrirMenu(false); irACategoria(cat.dataset.irCat); }
   if (contactos) { abrirMenu(false); $('#contactos').scrollIntoView({ block: 'start' }); }
+  if (politica) { abrirMenu(false); verPolitica(politica.dataset.irPolitica); }
 });
+
+/** Abre una politica (o solo baja a la seccion si no se dice cual) y la muestra en pantalla. */
+function verPolitica(id) {
+  const detalle = id && $('#politica-' + id);
+  if (detalle) detalle.open = true;
+  (detalle || $('#politicas')).scrollIntoView({ behavior: sinMovimiento() ? 'auto' : 'smooth', block: 'start' });
+}
 // Las promociones del carrusel tambien se abren con Enter desde el teclado.
 document.addEventListener('keydown', (e) => {
   const promo = e.target.closest?.('.promo[data-producto]');
@@ -843,7 +852,8 @@ function pantallaPedido() {
         <div class="total"><span style="font-weight:600">Total</span><span>${cop(subtotal + domicilio)}</span></div>
       </section>
       ${n.whatsapp
-        ? '<button class="primario whatsapp" id="enviar">Enviar pedido por WhatsApp</button>'
+        ? `<p class="autorizacion">Al enviar tu pedido aceptas los <button type="button" class="enlace" data-ir-politica="terminos">Términos y condiciones</button> y autorizas el tratamiento de tus datos según la <button type="button" class="enlace" data-ir-politica="privacidad">Política de privacidad</button>.</p>
+          <button class="primario whatsapp" id="enviar">Enviar pedido por WhatsApp</button>`
         : '<div class="aviso-caja peligro">Por ahora no podemos recibir pedidos en línea. Vuelve pronto.</div>'}
       <p class="nota">No necesitas crear una cuenta. La fecha y hora de entrega o recogida se coordinan por WhatsApp cuando confirmemos tu pedido.</p>
     </form>`;
